@@ -1,0 +1,98 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    @apply bg-gray-50 text-gray-900 antialiased;
+  }
+}
+
+@layer components {
+  .btn-primary {
+    @apply inline-flex items-center gap-2 px-4 py-2 bg-palmier-600 text-white rounded-lg font-medium hover:bg-palmier-700 active:bg-palmier-800 transition-colors disabled:opacity-50 disabled:cursor-not-allowed;
+  }
+  .btn-secondary {
+    @apply inline-flex items-center gap-2 px-4 py-2 bg-white text-gray-700 rounded-lg font-medium border border-gray-300 hover:bg-gray-50 transition-colors disabled:opacity-50;
+  }
+  .btn-danger {
+    @apply inline-flex items-center gap-2 px-4 py-2 bg-red-600 text-white rounded-lg font-medium hover:bg-red-700 transition-colors;
+  }
+  .card {
+    @apply bg-white rounded-xl shadow-sm border border-gray-200;
+  }
+  .input {
+    @apply w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-palmier-500 focus:border-transparent transition;
+  }
+  .label {
+    @apply block text-sm font-medium text-gray-700 mb-1;
+  }
+  .badge {
+    @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium;
+  }
+  .page-title {
+    @apply text-2xl font-bold text-gray-900;
+  }
+  .section-title {
+    @apply text-lg font-semibold text-gray-800;
+  }
+}
+
+/* Utilitaires supplementaires */
+.transition-smooth {
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.shadow-glow {
+  box-shadow: 0 0 20px rgba(0, 0, 0, 0.1);
+}
+
+.text-gradient {
+  background: linear-gradient(135deg, #1a472a, #2d8a4e);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.border-animated {
+  position: relative;
+  overflow: hidden;
+}
+
+.border-animated::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  width: 0;
+  height: 2px;
+  background: linear-gradient(90deg, #2d8a4e, #4CAF50);
+  transition: width 0.3s ease;
+}
+
+.border-animated:hover::after {
+  width: 100%;
+}
+
+/* Responsive */
+@media (max-width: 1024px) {
+  .lg\:min-h-screen {
+    min-height: 100vh;
+  }
+}
+
+/* Mode sombre */
+@media (prefers-color-scheme: dark) {
+  body {
+    @apply bg-gray-900 text-gray-100;
+  }
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.8s ease-out forwards;
+}
