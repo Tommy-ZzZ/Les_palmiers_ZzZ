@@ -27,16 +27,16 @@ import EmailTemplate from './EmailTemplate';
 import SentEmail from './SentEmail';
 import AuditLog from './AuditLog';
 
-// ⬅️ NOUVEAUX MODÈLES COMMUNICATION
+// ⬅️ MODÈLES COMMUNICATION
 import Message from './Message';
 import MessageEmail from './MessageEmail';
 import HistoriqueModification from './HistoriqueModification';
 
-// ⬅️ NOUVEAU MODÈLE NOTIFICATION - import de la fonction d'init
-import Notification, { initNotification } from './Notification';
+// ⬅️ MODÈLE NOTIFICATION - Import direct (sans fonction init)
+import Notification from './Notification';
 
-// ⬅️ INITIALISER NOTIFICATION AVEC SEQUELIZE
-initNotification(sequelize);
+// ✅ Notification est déjà initialisé avec sequelize dans son propre fichier
+// ✅ Pas besoin d'appeler initNotification(sequelize)
 
 // ============================================
 // ASSOCIATIONS
@@ -53,7 +53,7 @@ User.hasMany(Invoice, { foreignKey: 'editePar', as: 'facturesEditees' });
 User.hasMany(EmailTemplate, { foreignKey: 'modifiePar', as: 'modelesModifies' });
 User.hasMany(AuditLog, { foreignKey: 'utilisateurId', as: 'auditsEffectues' });
 
-// ⬅️ NOUVELLES ASSOCIATIONS MESSAGE
+// ⬅️ ASSOCIATIONS MESSAGE
 User.hasMany(Message, { foreignKey: 'creePar', as: 'messagesCrees' });
 User.hasMany(Message, { foreignKey: 'validePar', as: 'messagesValides' });
 
@@ -150,7 +150,7 @@ SentEmail.belongsTo(EmailTemplate, { foreignKey: 'modeleId', as: 'modele' });
 // ─── AuditLog associations ─────────────────────────────────────────────────────
 AuditLog.belongsTo(User, { foreignKey: 'utilisateurId', as: 'utilisateur' });
 
-// ⬅️ NOUVELLES ASSOCIATIONS MESSAGE & MESSAGE_EMAIL
+// ⬅️ ASSOCIATIONS MESSAGE & MESSAGE_EMAIL
 
 // ─── Message associations ──────────────────────────────────────────────────────
 Message.belongsTo(User, { foreignKey: 'creePar', as: 'creeParUtilisateur' });

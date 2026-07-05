@@ -4,12 +4,14 @@ import { useNavigate, useParams } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import api, { clientService } from '../services/api';
 import { formatEuro, nombreNuits, canalAcquisitionLabel } from '../utils/helpers';
+import { useWebSocketContext } from '../context/WebSocketContext';
 import { 
   Calculator, AlertCircle, Save, ArrowLeft, Users, User, BedDouble, 
   Calendar, Check, Loader2, Sparkles, Bike, Sun, Cloud, Snowflake,
   TrendingUp, Gift, CreditCard, Clock, MapPin, Star,
   FileText, Download, Phone, Mail, Building, Eye, 
-  Info, Heart, Bell, Coffee, Wind, Wifi, Tv, Utensils
+  Info, Heart, Bell, Coffee, Wind, Wifi, Tv, Utensils,
+  Tag
 } from 'lucide-react';
 
 const CANAUX = ['DIRECT', 'BOOKING', 'AIRBNB', 'TELEPHONE', 'EMAIL', 'AUTRE'];
@@ -291,6 +293,8 @@ export default function NouvelleReservationPage() {
   const { id } = useParams();
   const isEdit = !!id;
 
+  const { isConnected, refreshChambres } = useWebSocketContext();
+
   const [chambres, setChambres] = useState<any[]>([]);
   const [loadingInit, setLoadingInit] = useState(true);
   const [loadingReservation, setLoadingReservation] = useState(false);
@@ -311,7 +315,9 @@ export default function NouvelleReservationPage() {
     nbVelos: '0',
     demandesSpeciales: '',
     litBebe: false,
-    horaireArriveeTardive: ''
+    horaireArriveeTardive: '',
+    codePromo: '',
+    typeAcompte: '30',
   });
 
   const [simulation, setSimulation] = useState<any>(null);
@@ -335,7 +341,6 @@ export default function NouvelleReservationPage() {
   // ============================================
   const fetchClientComplet = async (clientId: number): Promise<ClientComplet | null> => {
     try {
-      // ✅ Validation de l'ID
       if (!clientId || isNaN(clientId) || clientId <= 0) {
         console.warn('⚠️ ID client invalide:', clientId);
         return null;
@@ -349,7 +354,6 @@ export default function NouvelleReservationPage() {
       
       const data = response.data ?? response;
       
-      // ✅ Si pas de données, retourner null
       if (!data || !data.id) {
         console.warn('⚠️ Aucune donnée client trouvée pour l\'ID:', clientId);
         return null;
@@ -357,7 +361,6 @@ export default function NouvelleReservationPage() {
       
       console.log('✅ Client complet reçu:', data);
       
-      // Normalisation des données
       return {
         id: data.id,
         civilite: data.civilite || '',
@@ -388,59 +391,36 @@ export default function NouvelleReservationPage() {
   };
 
   // ============================================
-  // CHARGEMENT INITIAL - CORRIGÉ
+  // CHARGEMENT INITIAL
   // ============================================
   useEffect(() => {
     const init = async () => {
       try {
-        // Chargement des chambres disponibles
         const chambresRes = await api.get('/chambres');
         const chambresData = chambresRes.data.data ?? chambresRes.data;
         setChambres(chambresData.filter((c: any) => c.statut !== 'EN_MAINTENANCE'));
 
-        // Si c'est une édition, charger la réservation
         if (isEdit) {
           setLoadingReservation(true);
           const res = await api.get(`/reservations/${id}`);
           const r = res.data.data ?? res.data;
           
-          console.log('📋 Réservation chargée:', r);
-          console.log('🔍 Recherche du clientId dans:', {
-            'r.clientId': r.clientId,
-            'r.client_id': r.client_id,
-            'r.client?.id': r.client?.id,
-            'r.client': r.client
-          });
-          
-          // ✅ Récupération du clientId avec plusieurs sources
           let clientId = null;
           
-          // Source 1: r.clientId
           if (r.clientId) {
             clientId = typeof r.clientId === 'string' ? parseInt(r.clientId, 10) : r.clientId;
-          }
-          // Source 2: r.client_id
-          else if (r.client_id) {
+          } else if (r.client_id) {
             clientId = typeof r.client_id === 'string' ? parseInt(r.client_id, 10) : r.client_id;
-          }
-          // Source 3: r.client?.id
-          else if (r.client?.id) {
+          } else if (r.client?.id) {
             clientId = typeof r.client.id === 'string' ? parseInt(r.client.id, 10) : r.client.id;
-          }
-          // Source 4: r.client (si c'est directement l'objet client)
-          else if (r.client && typeof r.client === 'object' && r.client.id) {
+          } else if (r.client && typeof r.client === 'object' && r.client.id) {
             clientId = typeof r.client.id === 'string' ? parseInt(r.client.id, 10) : r.client.id;
           }
           
-          console.log('🎯 clientId extrait:', clientId);
-          
-          // ✅ Récupération COMPLÈTE du client SEULEMENT si clientId est valide
           let clientComplet: ClientComplet | null = null;
           if (clientId && !isNaN(clientId) && clientId > 0) {
             clientComplet = await fetchClientComplet(clientId);
           } else {
-            console.warn('⚠️ Aucun clientId valide trouvé pour la réservation', id);
-            // Fallback: essayer d'utiliser les données client de la réservation
             if (r.client_prenom || r.client_nom || r.prenom || r.nom) {
               clientComplet = {
                 id: clientId || 0,
@@ -466,7 +446,6 @@ export default function NouvelleReservationPage() {
             }
           }
 
-          // Récupération de la chambre
           let chambreInfo = r.chambre || null;
           if (!chambreInfo && r.chambreId) {
             try {
@@ -477,7 +456,6 @@ export default function NouvelleReservationPage() {
             }
           }
           
-          // Construction des données du formulaire
           const formData = {
             clientId: String(clientId || ''),
             chambreId: String(r.chambreId ?? r.chambre_id ?? chambreInfo?.id ?? r.chambre?.id ?? ''),
@@ -493,18 +471,16 @@ export default function NouvelleReservationPage() {
             nbVelos: String(r.nbVelos ?? r.nb_velos ?? 0),
             demandesSpeciales: r.demandesSpeciales ?? r.demandes_speciales ?? '',
             litBebe: r.litBebe ?? r.lit_bebe ?? false,
-            horaireArriveeTardive: r.horaireArriveeTardive ?? r.horaire_arrivee_tardive ?? ''
+            horaireArriveeTardive: r.horaireArriveeTardive ?? r.horaire_arrivee_tardive ?? '',
+            codePromo: r.codePromo || r.code_promo || '',
+            typeAcompte: String(r.typeAcompte || 30),
           };
 
-          // ✅ Si on a un client complet, on enrichit le formulaire
           if (clientComplet) {
-            console.log('👤 Client complet trouvé:', clientComplet);
             setSelectedClient(clientComplet);
             
-            // Ajout des informations du client dans les demandes spéciales
             let demandes = formData.demandesSpeciales || '';
             
-            // Allergies
             if (clientComplet.allergies) {
               const allergyText = `Allergies: ${clientComplet.allergies}`;
               if (!demandes.includes('Allergies:')) {
@@ -512,7 +488,6 @@ export default function NouvelleReservationPage() {
               }
             }
             
-            // Régime alimentaire
             if (clientComplet.regime_alimentaire) {
               const regimeText = `Régime: ${clientComplet.regime_alimentaire}`;
               if (!demandes.includes('Régime:')) {
@@ -520,7 +495,6 @@ export default function NouvelleReservationPage() {
               }
             }
             
-            // Chambre préférée
             if (clientComplet.chambre_preferee) {
               const chambreText = `Chambre préférée: ${clientComplet.chambre_preferee}`;
               if (!demandes.includes('Chambre préférée:')) {
@@ -530,7 +504,6 @@ export default function NouvelleReservationPage() {
             
             formData.demandesSpeciales = demandes;
             
-            // ✅ Ajout du commentaire client
             let commentaireFinal = formData.commentaire || '';
             if (clientComplet.commentaire) {
               const noteClient = `📝 Notes client: ${clientComplet.commentaire}`;
@@ -540,10 +513,8 @@ export default function NouvelleReservationPage() {
             }
             formData.commentaire = commentaireFinal;
             
-            // Mise à jour de la recherche
             setClientSearch(`${clientComplet.prenom} ${clientComplet.nom}`);
           } else {
-            // Fallback avec les données de la réservation
             const clientPrenom = r.client_prenom || r.client?.prenom || r.prenom || '';
             const clientNom = r.client_nom || r.client?.nom || r.nom || '';
             const clientEmail = r.client_email || r.client?.email || r.email || '';
@@ -573,10 +544,8 @@ export default function NouvelleReservationPage() {
             setClientSearch(`${clientPrenom} ${clientNom}`);
           }
 
-          // Mise à jour du formulaire
           setForm(formData);
 
-          // Simulation automatique si les données sont présentes
           if (formData.chambreId && formData.dateArrivee && formData.dateDepart) {
             setTimeout(() => simuler(), 500);
           }
@@ -618,13 +587,11 @@ export default function NouvelleReservationPage() {
   // ============================================
   const selectClient = async (client: any) => {
     try {
-      // ✅ Récupérer le client complet
       const clientComplet = await fetchClientComplet(client.id);
       
       if (clientComplet) {
         setSelectedClient(clientComplet);
         
-        // Construction des demandes spéciales à partir des données client
         let demandes = form.demandesSpeciales || '';
         
         if (clientComplet.allergies) {
@@ -648,7 +615,6 @@ export default function NouvelleReservationPage() {
           }
         }
         
-        // Construction du commentaire avec les notes client
         let commentaireFinal = form.commentaire || '';
         if (clientComplet.commentaire) {
           const noteClient = `📝 Notes client: ${clientComplet.commentaire}`;
@@ -667,7 +633,6 @@ export default function NouvelleReservationPage() {
         setClientSearch(`${clientComplet.prenom} ${clientComplet.nom}`);
         toast.success(`👤 Client ${clientComplet.prenom} ${clientComplet.nom} sélectionné`);
       } else {
-        // Fallback
         setSelectedClient(client);
         setForm(f => ({ ...f, clientId: String(client.id) }));
         setClientSearch(`${client.prenom} ${client.nom}`);
@@ -683,7 +648,7 @@ export default function NouvelleReservationPage() {
   };
 
   // ============================================
-  // SIMULATION TARIFAIRE
+  // SIMULATION TARIFAIRE AVEC CODE PROMO ET ACOMPTE
   // ============================================
   const simuler = async () => {
     if (!form.chambreId || !form.dateArrivee || !form.dateDepart) {
@@ -704,10 +669,26 @@ export default function NouvelleReservationPage() {
         petitDejeuner: form.petitDejeuner,
         nbVelos: Number(form.nbVelos) || 0,
         litBebe: form.litBebe,
-        demandesSpeciales: form.demandesSpeciales
+        demandesSpeciales: form.demandesSpeciales,
+        codePromo: form.codePromo || undefined,
       });
 
-      setSimulation(res.data);
+      const total = res.data.totalTTC || res.data.total || 0;
+      const typeAcompte = form.typeAcompte || '30';
+      let pourcentageAcompte = 30;
+      if (typeAcompte === '50') pourcentageAcompte = 50;
+      if (typeAcompte === '100') pourcentageAcompte = 100;
+
+      const montantAcompte = total * (pourcentageAcompte / 100);
+      const soldeRestant = total - montantAcompte;
+
+      setSimulation({
+        ...res.data,
+        typeAcompte: typeAcompte,
+        pourcentageAcompte: pourcentageAcompte,
+        montantAcompte: Math.round(montantAcompte * 100) / 100,
+        soldeRestant: Math.round(soldeRestant * 100) / 100,
+      });
       setTimeout(() => setTotalAnimation(true), 100);
       toast.success('Tarif calculé avec succès');
     } catch (e: any) {
@@ -753,7 +734,9 @@ export default function NouvelleReservationPage() {
         canalAcquisition: form.canalAcquisition,
         commentaire: form.commentaire || '',
         groupe: form.groupe || false,
-        nbVelos: Number(form.nbVelos) || 0
+        nbVelos: Number(form.nbVelos) || 0,
+        codePromo: form.codePromo || null,
+        typeAcompte: Number(form.typeAcompte) || 30,
       };
 
       console.log('📤 Envoi payload:', payload);
@@ -768,6 +751,14 @@ export default function NouvelleReservationPage() {
       if (response.data.success) {
         setSuccess(true);
         toast.success(isEdit ? '✅ Réservation modifiée avec succès' : '✅ Réservation créée avec succès');
+        
+        refreshChambres();
+        
+        try {
+          localStorage.removeItem('chambres_cache');
+        } catch (cacheError) {
+          // ignore
+        }
         
         setTimeout(() => {
           navigate('/reservations');
@@ -831,6 +822,10 @@ export default function NouvelleReservationPage() {
         {isEdit && (
           <div className="text-sm text-gray-500 font-medium">Mode édition</div>
         )}
+        <div className="flex items-center gap-2 text-xs">
+          <span className={`inline-block w-2 h-2 rounded-full ${isConnected ? 'bg-emerald-500 animate-pulse' : 'bg-red-500'}`} />
+          <span className="text-gray-400">{isConnected ? '🔗 Connecté' : '📡 Hors ligne'}</span>
+        </div>
       </div>
 
       {/* RÉSUMÉ DE LA RÉSERVATION */}
@@ -906,7 +901,6 @@ export default function NouvelleReservationPage() {
                   )}
                 </h3>
 
-                {/* ✅ Affichage du client complet en mode édition */}
                 {selectedClient && isEdit && (
                   <div className="bg-green-50 border border-green-200 rounded-lg p-3 animate-scaleIn">
                     <div className="flex items-start gap-3">
@@ -945,7 +939,6 @@ export default function NouvelleReservationPage() {
                       </div>
                     </div>
                     
-                    {/* ✅ Affichage des informations complémentaires du client */}
                     {(selectedClient.allergies || selectedClient.regime_alimentaire || selectedClient.chambre_preferee || selectedClient.commentaire) && (
                       <div className="mt-2 p-2 bg-white/60 rounded-lg border border-green-200 space-y-1">
                         {selectedClient.allergies && (
@@ -1080,7 +1073,6 @@ export default function NouvelleReservationPage() {
                   </div>
                 </div>
 
-                {/* Détails de la chambre sélectionnée */}
                 {chambreSelectionnee && (
                   <div className="bg-palmier-50 border border-palmier-200 rounded-lg p-3 animate-fadeInDown">
                     <div className="flex items-center gap-2 mb-1">
@@ -1351,6 +1343,74 @@ export default function NouvelleReservationPage() {
                   />
                 </div>
               </div>
+
+              {/* SECTION CODE PROMO & ACOMPTE */}
+              <div className="card p-6 space-y-4 animate-fadeInUp delay-300">
+                <h3 className="font-semibold text-gray-800 text-sm uppercase tracking-wide flex items-center gap-2">
+                  <Gift size={16} className="text-palmier-500" />
+                  Code promo & Acompte
+                </h3>
+
+                {/* CODE PROMO */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1.5 flex items-center gap-2">
+                    <Tag size={14} className="text-amber-500" />
+                    Code promo (6 caractères max)
+                  </label>
+                  <div className="relative">
+                    <input
+                      type="text"
+                      value={form.codePromo}
+                      onChange={e => {
+                        const val = e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 6);
+                        setForm(f => ({ ...f, codePromo: val }));
+                      }}
+                      placeholder="Ex: ETE2026"
+                      maxLength={6}
+                      className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm font-mono tracking-widest uppercase focus:ring-2 focus:ring-palmier-500 outline-none"
+                      style={{ color: '#1a1a1a' }}
+                    />
+                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] text-gray-400">
+                      {form.codePromo.length}/6
+                    </span>
+                  </div>
+                  {form.codePromo && (
+                    <p className="text-[10px] text-amber-600 mt-1 flex items-center gap-1">
+                      <Gift size={10} />
+                      Code promo appliqué - vérifiez le tarif
+                    </p>
+                  )}
+                </div>
+
+                {/* TYPE D'ACOMPTE */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1.5 flex items-center gap-2">
+                    <CreditCard size={14} className="text-palmier-500" />
+                    Acompte
+                  </label>
+                  <div className="grid grid-cols-3 gap-2">
+                    {[
+                      { value: '30', label: '30%', desc: 'Standard' },
+                      { value: '50', label: '50%', desc: 'Conseillé' },
+                      { value: '100', label: '100%', desc: 'Paiement total' },
+                    ].map(opt => (
+                      <button
+                        key={opt.value}
+                        type="button"
+                        onClick={() => setForm(f => ({ ...f, typeAcompte: opt.value }))}
+                        className={`py-2.5 rounded-lg border text-sm font-medium transition-all duration-200 ${
+                          form.typeAcompte === opt.value
+                            ? 'bg-palmier-600 text-white border-palmier-600 shadow-md scale-105'
+                            : 'bg-white text-gray-700 border-gray-200 hover:border-palmier-300 hover:bg-palmier-50'
+                        }`}
+                      >
+                        {opt.label}
+                        <span className="block text-[9px] font-normal opacity-70">{opt.desc}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
             </div>
 
             {/* SIDEBAR — SIMULATION */}
@@ -1388,7 +1448,6 @@ export default function NouvelleReservationPage() {
 
                 {simulation && (
                   <div className="space-y-2 text-sm animate-fadeInDown">
-                    {/* SAISON */}
                     <div className={`flex items-center justify-between p-2 rounded-lg border ${saisonInfo.color} mb-2`}>
                       <span className="flex items-center gap-1 font-medium">
                         <span className="saison-icon">{saisonInfo.icon}</span>
@@ -1446,7 +1505,7 @@ export default function NouvelleReservationPage() {
                       <div className="flex justify-between text-green-700 animate-slideDown">
                         <span className="flex items-center gap-1">
                           <Gift size={12} />
-                          Code promo {simData.promoApplied.code}
+                          Code promo <span className="font-mono font-bold text-amber-600">{simData.promoApplied.code}</span>
                         </span>
                         <span>-{formatEuro(simData.reductionPromo)}</span>
                       </div>
@@ -1489,21 +1548,45 @@ export default function NouvelleReservationPage() {
                       </span>
                     </div>
 
+                    {/* ACOMPTE SELON LE CHOIX */}
+                    <div className="flex justify-between font-medium bg-blue-50 p-3 rounded-lg border border-blue-200">
+                      <span className="text-blue-800 flex items-center gap-1">
+                        <CreditCard size={14} />
+                        Acompte ({simulation.pourcentageAcompte || 30}%)
+                      </span>
+                      <span className="text-blue-700 font-bold">
+                        {formatEuro(simulation.montantAcompte || 0)}
+                      </span>
+                    </div>
+
+                    <div className="flex justify-between text-sm text-gray-600">
+                      <span>Solde restant</span>
+                      <span className="font-semibold text-amber-700">
+                        {formatEuro(simulation.soldeRestant || 0)}
+                      </span>
+                    </div>
+
+                    <div className="flex justify-between text-xs text-gray-400">
+                      <span>Statut paiement</span>
+                      <span className={simulation.soldeRestant > 0 ? 'text-amber-600' : 'text-emerald-600'}>
+                        {simulation.soldeRestant > 0 ? '⏳ En attente de solde' : '✅ Complet'}
+                      </span>
+                    </div>
+
                     <div className="text-xs text-gray-600 mt-1 flex items-center justify-between">
                       <span className="flex items-center gap-1">
-                        <Clock size={12} /> Acompte (30%)
+                        <Clock size={12} /> Acompte ({simulation.pourcentageAcompte || 30}%)
                       </span>
-                      <span className="text-gray-800">{formatEuro(simData.acompte || (simData.total || 0) * 0.3)}</span>
+                      <span className="text-gray-800">{formatEuro(simulation.montantAcompte || 0)}</span>
                     </div>
 
                     <div className="text-xs text-gray-500 flex items-center justify-between">
                       <span>Restant dû</span>
-                      <span className="text-gray-700">{formatEuro((simData.total || 0) - (simData.acompte || (simData.total || 0) * 0.3))}</span>
+                      <span className="text-gray-700">{formatEuro(simulation.soldeRestant || 0)}</span>
                     </div>
                   </div>
                 )}
 
-                {/* BOUTONS */}
                 <div className="mt-5 pt-4 border-t border-gray-200 space-y-2 animate-fadeInUp delay-500">
                   <button 
                     type="submit" 

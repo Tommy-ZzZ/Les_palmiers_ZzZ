@@ -1,7 +1,8 @@
-// App.tsx
+// frontend/src/App.tsx
 import React from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
+import { WebSocketProvider } from './context/WebSocketContext';
 import Layout from './components/layout/Layout';
 import LoginPage from './pages/LoginPage';
 import DashboardPage from './pages/DashboardPage';
@@ -13,8 +14,6 @@ import PaiementsPage from './pages/PaiementsPage';
 import CalendrierPage from './pages/CalendrierPage';
 import AdminPage from './pages/AdminPage';
 import ServicesAnnexesPage from './pages/ServicesAnnexesPage';
-
-// ✅ NOUVEAU - Communication (§3.6)
 import CommunicationPage from './pages/CommunicationPage';
 
 function PrivateRoute({ children }: { children: React.ReactNode }) {
@@ -47,64 +46,66 @@ function RoleRoute({ children, roles }: { children: React.ReactNode; roles: stri
 export default function App() {
   return (
     <AuthProvider>
-      <BrowserRouter>
-        <Routes>
-          <Route path="/login" element={<LoginPage />} />
-          <Route
-            path="/"
-            element={
-              <PrivateRoute>
-                <Layout />
-              </PrivateRoute>
-            }
-          >
-            <Route index element={<Navigate to="/dashboard" replace />} />
-            
-            {/* ============================================ */}
-            {/* SECTION 1: Tableau de bord (§3.7) */}
-            {/* ============================================ */}
-            <Route path="dashboard" element={<DashboardPage />} />
-            
-            {/* ============================================ */}
-            {/* SECTION 2: Gestion des séjours (§3.1 & §3.2) */}
-            {/* ============================================ */}
-            <Route path="calendrier" element={<CalendrierPage />} />
-            <Route path="reservations" element={<ReservationsPage />} />
-            <Route path="reservations/nouvelle" element={<NouvelleReservationPage />} />
-            <Route path="reservations/:id" element={<NouvelleReservationPage />} />
-            <Route path="chambres" element={<ChambresPage />} />
-            
-            {/* ============================================ */}
-            {/* SECTION 3: Clients & Paiements (§3.3 & §3.4) */}
-            {/* ============================================ */}
-            <Route path="clients" element={<ClientsPage />} />
-            <Route path="paiements" element={<PaiementsPage />} />
-            
-            {/* ============================================ */}
-            {/* SECTION 4: Services annexes (§3.5) */}
-            {/* ============================================ */}
-            <Route path="services-annexes" element={<ServicesAnnexesPage />} />
-            
-            {/* ============================================ */}
-            {/* SECTION 5: Communication (§3.6) ✅ NOUVEAU */}
-            {/* ============================================ */}
-            <Route path="communication" element={<CommunicationPage />} />
-            
-            {/* ============================================ */}
-            {/* SECTION 6: Administration (§4.1 & §4.5) */}
-            {/* ============================================ */}
+      <WebSocketProvider>
+        <BrowserRouter>
+          <Routes>
+            <Route path="/login" element={<LoginPage />} />
             <Route
-              path="admin"
+              path="/"
               element={
-                <RoleRoute roles={['GERANTE', 'RESPONSABLE_TECHNIQUE']}>
-                  <AdminPage />
-                </RoleRoute>
+                <PrivateRoute>
+                  <Layout />
+                </PrivateRoute>
               }
-            />
-          </Route>
-          <Route path="*" element={<Navigate to="/dashboard" replace />} />
-        </Routes>
-      </BrowserRouter>
+            >
+              <Route index element={<Navigate to="/dashboard" replace />} />
+              
+              {/* ============================================ */}
+              {/* SECTION 1: Tableau de bord (§3.7) */}
+              {/* ============================================ */}
+              <Route path="dashboard" element={<DashboardPage />} />
+              
+              {/* ============================================ */}
+              {/* SECTION 2: Gestion des séjours (§3.1 & §3.2) */}
+              {/* ============================================ */}
+              <Route path="calendrier" element={<CalendrierPage />} />
+              <Route path="reservations" element={<ReservationsPage />} />
+              <Route path="reservations/nouvelle" element={<NouvelleReservationPage />} />
+              <Route path="reservations/:id" element={<NouvelleReservationPage />} />
+              <Route path="chambres" element={<ChambresPage />} />
+              
+              {/* ============================================ */}
+              {/* SECTION 3: Clients & Paiements (§3.3 & §3.4) */}
+              {/* ============================================ */}
+              <Route path="clients" element={<ClientsPage />} />
+              <Route path="paiements" element={<PaiementsPage />} />
+              
+              {/* ============================================ */}
+              {/* SECTION 4: Services annexes (§3.5) */}
+              {/* ============================================ */}
+              <Route path="services-annexes" element={<ServicesAnnexesPage />} />
+              
+              {/* ============================================ */}
+              {/* SECTION 5: Communication (§3.6) */}
+              {/* ============================================ */}
+              <Route path="communication" element={<CommunicationPage />} />
+              
+              {/* ============================================ */}
+              {/* SECTION 6: Administration (§4.1 & §4.5) */}
+              {/* ============================================ */}
+              <Route
+                path="admin"
+                element={
+                  <RoleRoute roles={['GERANTE', 'RESPONSABLE_TECHNIQUE']}>
+                    <AdminPage />
+                  </RoleRoute>
+                }
+              />
+            </Route>
+            <Route path="*" element={<Navigate to="/dashboard" replace />} />
+          </Routes>
+        </BrowserRouter>
+      </WebSocketProvider>
     </AuthProvider>
   );
 }

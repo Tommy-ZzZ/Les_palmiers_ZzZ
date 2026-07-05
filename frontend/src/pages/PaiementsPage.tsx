@@ -17,6 +17,7 @@ import {
 } from 'lucide-react';
 import { paiementService, reservationService } from '../services/api';
 import { formatEuro, formatDate, formatDateTime } from '../utils/helpers';
+import { useWebSocketContext } from '../context/WebSocketContext';
 
 // ============================================
 // TYPES — Diagramme de classes §3.4
@@ -39,7 +40,6 @@ interface Paiement {
   notes?: string;
   enregistrePar?: number;
   createdAt: string;
-  // Champs spécifiques selon mode
   numeroCheque?: string;
   banqueEmettrice?: string;
   typeCarte?: TypeCarte;
@@ -215,7 +215,6 @@ const PaymentConfirmation = ({
   return (
     <div className={`fixed inset-0 z-[60] flex items-center justify-center p-4 transition-all duration-500 ${visible ? 'bg-black/60 backdrop-blur-md' : 'bg-black/0 pointer-events-none'}`}>
       <div className={`bg-white rounded-3xl shadow-2xl max-w-md w-full overflow-hidden transition-all duration-500 ${visible ? 'opacity-100 scale-100 translate-y-0' : 'opacity-0 scale-90 translate-y-8'}`}>
-        {/* Header avec icône de succès */}
         <div className="relative bg-gradient-to-r from-emerald-500 to-emerald-600 px-6 py-8 text-center">
           {showConfetti && (
             <div className="absolute inset-0 overflow-hidden">
@@ -235,15 +234,12 @@ const PaymentConfirmation = ({
           </div>
         </div>
 
-        {/* Corps */}
         <div className="p-6 space-y-4">
-          {/* Montant */}
           <div className="text-center">
             <p className="text-sm text-gray-500">Montant</p>
             <p className="text-3xl font-bold text-gray-900">{formatEuro(montant)}</p>
           </div>
 
-          {/* Détails */}
           <div className="bg-gray-50 rounded-xl p-4 space-y-2">
             <div className="flex justify-between text-sm">
               <span className="text-gray-500">Client</span>
@@ -267,14 +263,12 @@ const PaymentConfirmation = ({
             </div>
           </div>
 
-          {/* Numéro de transaction */}
           <div className="text-center">
             <p className="text-xs text-gray-400 font-mono">
               Transaction #TX-{String(Date.now()).slice(-8)}
             </p>
           </div>
 
-          {/* Actions */}
           <div className="flex gap-3 pt-2">
             <button
               onClick={onPrint}
@@ -429,7 +423,7 @@ const ModePaiementIcon = ({ mode }: { mode: ModePaiement }) => {
 };
 
 // ============================================
-// COMPOSANT — STAT CARD AVEC COUNT-UP
+// COMPOSANT — STAT CARD
 // ============================================
 
 function useCountUp(target: number, duration = 900, active = true) {
@@ -873,6 +867,9 @@ export default function PaiementsPage() {
   const [alertes, setAlertes] = useState<AlertePaiement[]>([]);
   const PER_PAGE = 10;
 
+  // ─── WEBSOCKET ──────────────────────────────────
+  const { refreshChambres } = useWebSocketContext();
+
   // ─── MODALS ─────────────────────────────────────
   const [showModal, setShowModal] = useState(false);
   const [selectedResa, setSelectedResa] = useState<Reservation | null>(null);
@@ -894,7 +891,6 @@ export default function PaiementsPage() {
     datePaiement: new Date().toISOString().slice(0, 10),
     reference: '',
     notes: '',
-    // Champs spécifiques
     numeroCheque: '',
     banqueEmettrice: '',
     typeCarte: 'CB' as TypeCarte,
@@ -929,7 +925,7 @@ export default function PaiementsPage() {
   };
 
   const typeVersementLabel: Record<TypeVersement, string> = {
-    ACOMPTE: 'Acompte (30%)',
+    ACOMPTE: 'Acompte',
     SOLDE: 'Solde',
     ARRHES: 'Arrhes',
   };
@@ -1115,6 +1111,10 @@ export default function PaiementsPage() {
     setShowModal(true);
   };
 
+  // ============================================
+  // ✅ CORRECTION : PAIEMENT → 100% + CONFIRMATION
+  // ============================================
+
   const handleSavePaiement = async () => {
     if (!selectedResa) return;
     const montant = Number(paiementForm.montant);
@@ -1123,7 +1123,6 @@ export default function PaiementsPage() {
       return;
     }
 
-    // Validation selon mode
     if (paiementForm.modePaiement === 'CHEQUE') {
       if (!paiementForm.numeroCheque) {
         setFormError('Veuillez saisir le numéro de chèque');
@@ -1149,7 +1148,6 @@ export default function PaiementsPage() {
       }
     }
 
-    // Afficher la confirmation avant d'envoyer
     setConfirmationData({
       montant,
       client: { prenom: selectedResa.client.prenom, nom: selectedResa.client.nom },
@@ -1177,7 +1175,6 @@ export default function PaiementsPage() {
         notes: paiementForm.notes || undefined,
       };
 
-      // Ajouter les champs spécifiques
       if (paiementForm.modePaiement === 'CHEQUE') {
         payload.numeroCheque = paiementForm.numeroCheque;
         payload.banqueEmettrice = paiementForm.banqueEmettrice;
@@ -1192,13 +1189,33 @@ export default function PaiementsPage() {
       }
 
       const response = await paiementService.create(payload);
+      
       if (response?.success) {
-        toast.success('Paiement enregistré avec succès');
+        toast.success('✅ Paiement enregistré avec succès');
+
+        // ✅ Récupérer la réservation mise à jour
+        const updatedResa = await reservationService.getById(selectedResa.id);
+        if (updatedResa?.success && updatedResa.data) {
+          const resa = updatedResa.data;
+          
+          // ✅ Si paiement complet → réservation CONFIRMEE
+          if (resa.statutPaiement === 'COMPLET' && resa.statut === 'EN_ATTENTE_ACOMPTE') {
+            await reservationService.update(resa.id, { statut: 'CONFIRMEE' });
+            toast.success('✅ Réservation confirmée - Paiement complet reçu');
+            
+            // 🔔 Rafraîchir les chambres via WebSocket
+            refreshChambres();
+            try { localStorage.removeItem('chambres_cache'); } catch (e) { /* ignore */ }
+          }
+        }
+
+        // ✅ Forcer le refresh des données
+        await loadData();
+
         setShowConfirmation(false);
         setShowModal(false);
         setSelectedResa(null);
         setConfirmationData(null);
-        await loadData();
       } else {
         setFormError(response?.message || 'Erreur lors de l\'enregistrement');
         setShowConfirmation(false);
@@ -1301,7 +1318,6 @@ export default function PaiementsPage() {
   return (
     <div className="min-h-screen bg-gray-50/60 p-4 lg:p-6 space-y-5">
 
-      {/* ── STYLES ──────────────────────────────── */}
       <style>{`
         @keyframes slideIn {
           from { opacity: 0; transform: translateX(-12px); }
@@ -1716,7 +1732,6 @@ export default function PaiementsPage() {
                     setPaiementForm(f => ({ 
                       ...f, 
                       modePaiement: mode,
-                      // Réinitialiser les champs spécifiques
                       numeroCheque: '',
                       banqueEmettrice: '',
                       referenceVirement: '',
@@ -1764,7 +1779,6 @@ export default function PaiementsPage() {
                 />
               </div>
 
-              {/* Champs spécifiques selon mode de paiement */}
               <ModePaiementFields
                 mode={paiementForm.modePaiement}
                 form={paiementForm}
@@ -1783,7 +1797,6 @@ export default function PaiementsPage() {
               </div>
             </div>
 
-            {/* Sécurisation : affichage des mesures */}
             <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 flex items-start gap-3 text-xs text-blue-700 no-print">
               <Shield size={16} className="text-blue-500 shrink-0 mt-0.5" />
               <div>

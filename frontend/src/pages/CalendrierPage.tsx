@@ -10,17 +10,19 @@ import {
   CalendarRange, Coffee, Save, Bookmark,
   BookmarkCheck, LayoutGrid, LayoutList,
   Sun as SunIcon, Moon as MoonIcon,
+  Wifi as WifiIcon, WifiOff, AlertCircle
 } from 'lucide-react';
 import {
   format, startOfMonth, endOfMonth, eachDayOfInterval,
   isToday, parseISO, isSameDay,
   addMonths, subMonths, startOfWeek, endOfWeek,
-  eachWeekOfInterval, getWeek, differenceInDays,
+  getWeek, differenceInDays,
   isWithinInterval, addDays, subDays, isWeekend,
   addWeeks, subWeeks, startOfDay, endOfDay
 } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import api from '../services/api';
+import { useWebSocketContext } from '../context/WebSocketContext';
 
 // ============================================================
 // TYPES
@@ -28,7 +30,7 @@ import api from '../services/api';
 
 type StatutReservation = 'EN_ATTENTE_ACOMPTE' | 'CONFIRMEE' | 'ANNULEE' | 'TERMINEE' | 'NO_SHOW';
 type StatutChambre = 'DISPONIBLE' | 'EN_MAINTENANCE' | 'HORS_SERVICE' | 'BLOQUEE';
-type VueCalendrier = 'month' | 'week' | 'chambre' | 'client' | 'trimestre';
+type VueCalendrier = 'month' | 'week' | 'chambre' | 'trimestre';
 type PlageHoraire = 'matin' | 'apres-midi' | 'soir' | 'toute';
 
 interface Chambre {
@@ -46,6 +48,14 @@ interface Chambre {
   tarif_base: number;
 }
 
+interface Client {
+  id: number;
+  prenom: string;
+  nom: string;
+  email: string;
+  telephone: string;
+}
+
 interface Reservation {
   id: number;
   numero: string;
@@ -56,15 +66,15 @@ interface Reservation {
   statut: StatutReservation;
   heureArrivee?: string;
   heureDepart?: string;
-  client?: { prenom: string; nom: string; id: number };
-  chambre?: { id: number; nom: string; numero: string };
+  client?: Client;
+  chambre?: Chambre;
   chambreId?: number;
+  nbNuits?: number;
   clientPrenom?: string;
   clientNom?: string;
   clientId?: number;
   chambreNom?: string;
   chambreNumero?: string;
-  nbNuits?: number;
 }
 
 interface Blockage {
@@ -110,36 +120,41 @@ interface FiltresSauvegardes {
 // CONSTANTES COULEURS
 // ============================================================
 
-const STATUT_COLORS: Record<StatutReservation, { bg: string; text: string; dot: string; pill: string }> = {
+const STATUT_COLORS: Record<StatutReservation, { bg: string; text: string; dot: string; pill: string; border: string }> = {
   EN_ATTENTE_ACOMPTE: {
-    bg: 'bg-amber-50 border border-amber-200',
+    bg: 'bg-amber-50',
     text: 'text-amber-800',
     dot: 'bg-amber-400',
     pill: 'bg-amber-100 text-amber-800 border-amber-200',
+    border: 'border-amber-200',
   },
   CONFIRMEE: {
-    bg: 'bg-emerald-50 border border-emerald-200',
+    bg: 'bg-emerald-50',
     text: 'text-emerald-800',
     dot: 'bg-emerald-500',
     pill: 'bg-emerald-100 text-emerald-800 border-emerald-200',
+    border: 'border-emerald-200',
   },
   ANNULEE: {
-    bg: 'bg-rose-50 border border-rose-200',
+    bg: 'bg-rose-50',
     text: 'text-rose-800',
     dot: 'bg-rose-400',
     pill: 'bg-rose-100 text-rose-800 border-rose-200',
+    border: 'border-rose-200',
   },
   TERMINEE: {
-    bg: 'bg-gray-50 border border-gray-200',
+    bg: 'bg-gray-50',
     text: 'text-gray-600',
     dot: 'bg-gray-400',
     pill: 'bg-gray-100 text-gray-600 border-gray-200',
+    border: 'border-gray-200',
   },
   NO_SHOW: {
-    bg: 'bg-rose-50 border border-rose-300',
+    bg: 'bg-rose-50',
     text: 'text-rose-900',
     dot: 'bg-rose-600',
     pill: 'bg-rose-200 text-rose-900 border-rose-300',
+    border: 'border-rose-300',
   },
 };
 
@@ -149,11 +164,6 @@ const STATUT_LABELS: Record<StatutReservation, string> = {
   ANNULEE: 'Annulée',
   TERMINEE: 'Terminée',
   NO_SHOW: 'No-show',
-};
-
-const TYPE_COLORS: Record<string, string> = {
-  BLOQUE: 'bg-slate-100 border border-slate-200 text-slate-700',
-  MAINTENANCE: 'bg-orange-50 border border-orange-200 text-orange-800',
 };
 
 const STATUT_CHAMBRE_COLORS: Record<StatutChambre, string> = {
@@ -177,36 +187,36 @@ const STATUT_CHAMBRE_LABELS: Record<StatutChambre, string> = {
 const PageSpinner = () => (
   <div className="flex flex-col items-center justify-center py-20 gap-4">
     <div className="relative w-12 h-12">
-      <div className="absolute inset-0 rounded-full border-4 border-palmier-100" />
-      <div className="absolute inset-0 rounded-full border-4 border-transparent border-t-palmier-500 animate-spin" />
+      <div className="absolute inset-0 rounded-full border-4 border-emerald-100" />
+      <div className="absolute inset-0 rounded-full border-4 border-transparent border-t-emerald-500 animate-spin" />
     </div>
-    <p className="text-sm text-gray-400 tracking-wide">Chargement...</p>
+    <p className="text-sm text-gray-400 tracking-wide">Chargement du calendrier...</p>
   </div>
 );
 
 const StatPill = ({
-  label, value, icon, accent = 'palmier', sub,
+  label, value, icon, accent = 'emerald', sub,
 }: {
   label: string;
   value: string | number;
   icon: React.ReactNode;
-  accent?: 'palmier' | 'emerald' | 'amber' | 'rose' | 'sky' | 'slate';
+  accent?: 'emerald' | 'amber' | 'rose' | 'sky' | 'slate' | 'purple';
   sub?: string;
 }) => {
   const accents = {
-    palmier: 'text-palmier-600 bg-palmier-50 ring-palmier-200/60',
     emerald: 'text-emerald-600 bg-emerald-50 ring-emerald-200/60',
     amber: 'text-amber-600 bg-amber-50 ring-amber-200/60',
     rose: 'text-rose-600 bg-rose-50 ring-rose-200/60',
     sky: 'text-sky-600 bg-sky-50 ring-sky-200/60',
     slate: 'text-slate-600 bg-slate-50 ring-slate-200/60',
+    purple: 'text-purple-600 bg-purple-50 ring-purple-200/60',
   };
   return (
-    <div className={`flex items-center gap-3 px-4 py-3 rounded-2xl ring-1 ${accents[accent]} transition-all duration-300 hover:-translate-y-0.5 hover:shadow-md`}>
+    <div className={`flex items-center gap-3 px-4 py-3 rounded-2xl ring-1 ${accents[accent]} transition-all duration-300 hover:-translate-y-0.5 hover:shadow-md bg-white`}>
       <div className="shrink-0 opacity-70">{icon}</div>
       <div className="min-w-0">
         <div className="text-[11px] font-medium opacity-60 uppercase tracking-wider truncate">{label}</div>
-        <div className="text-xl font-bold leading-tight">{value}</div>
+        <div className="text-xl font-bold leading-tight text-gray-900">{value}</div>
         {sub && <div className="text-[10px] opacity-50 truncate">{sub}</div>}
       </div>
     </div>
@@ -215,11 +225,10 @@ const StatPill = ({
 
 const VueTabs = ({ value, onChange }: { value: VueCalendrier; onChange: (v: VueCalendrier) => void }) => {
   const tabs: { value: VueCalendrier; label: string; icon: React.ReactNode }[] = [
-    { value: 'month', label: 'Mois', icon: <LayoutGrid size={13} /> },
-    { value: 'week', label: 'Semaine', icon: <LayoutList size={13} /> },
-    { value: 'chambre', label: 'Chambres', icon: <Building size={13} /> },
-    { value: 'client', label: 'Clients', icon: <User size={13} /> },
-    { value: 'trimestre', label: '3 mois', icon: <CalendarRange size={13} /> },
+    { value: 'month', label: 'Mois', icon: <LayoutGrid size={14} /> },
+    { value: 'week', label: 'Semaine', icon: <LayoutList size={14} /> },
+    { value: 'chambre', label: 'Chambres', icon: <Building size={14} /> },
+    { value: 'trimestre', label: '3 mois', icon: <CalendarRange size={14} /> },
   ];
   return (
     <div className="flex items-center gap-1 bg-gray-100/80 rounded-2xl p-1">
@@ -229,7 +238,7 @@ const VueTabs = ({ value, onChange }: { value: VueCalendrier; onChange: (v: VueC
           onClick={() => onChange(t.value)}
           className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-[13px] font-medium transition-all duration-200 ${
             value === t.value
-              ? 'bg-white text-palmier-700 shadow-sm shadow-palmier-100/60 ring-1 ring-palmier-100/80'
+              ? 'bg-white text-emerald-700 shadow-sm shadow-emerald-100/60 ring-1 ring-emerald-100/80'
               : 'text-gray-500 hover:text-gray-800 hover:bg-white/60'
           }`}
           title={t.label}
@@ -252,21 +261,21 @@ const EventChip = ({
   const isRes = evt.type === 'RESERVATION';
   const colorSet = isRes && evt.statut ? STATUT_COLORS[evt.statut] : null;
   const chipClass = colorSet
-    ? `${colorSet.bg} ${colorSet.text}`
+    ? `${colorSet.bg} ${colorSet.text} ${colorSet.border}`
     : evt.type === 'MAINTENANCE'
-    ? TYPE_COLORS.MAINTENANCE
-    : TYPE_COLORS.BLOQUE;
+    ? 'bg-orange-50 border border-orange-200 text-orange-800'
+    : 'bg-slate-100 border border-slate-200 text-slate-700';
 
   const label = evt.clientNom
     ? size === 'compact'
-      ? `${evt.clientPrenom?.charAt(0)}. ${evt.clientNom}`
-      : `${evt.clientPrenom} ${evt.clientNom}`
+      ? `${evt.clientPrenom?.charAt(0) || ''}. ${evt.clientNom}`
+      : `${evt.clientPrenom || ''} ${evt.clientNom}`
     : evt.motif || evt.type;
 
   return (
     <button
       onClick={onClick}
-      className={`group w-full text-left rounded-lg px-2 py-1 text-[11px] font-medium truncate transition-all duration-150 hover:shadow-sm hover:brightness-95 ${chipClass}`}
+      className={`group w-full text-left rounded-lg px-2 py-1 text-[11px] font-medium truncate transition-all duration-150 hover:shadow-sm hover:brightness-95 border ${chipClass}`}
       title={label}
     >
       <span className="flex items-center gap-1.5 truncate">
@@ -275,7 +284,7 @@ const EventChip = ({
         )}
         <span className="truncate">{label}</span>
         {evt.nbNuits && evt.nbNuits > 0 && size !== 'compact' && (
-          <span className="shrink-0 opacity-50 ml-auto">{evt.nbNuits}n</span>
+          <span className="shrink-0 opacity-50 ml-auto text-[10px]">{evt.nbNuits}n</span>
         )}
       </span>
     </button>
@@ -289,11 +298,15 @@ const EventChip = ({
 export default function CalendrierPage() {
   const navigate = useNavigate();
 
+  // ✅ WebSocket - Utilisation de subscribeToChannel
+  const { isConnected, subscribeToChannel } = useWebSocketContext();
+
   // ─── ÉTAT ────────────────────────────────────────────────
   const [currentDate, setCurrentDate] = useState(new Date());
   const [vue, setVue] = useState<VueCalendrier>('month');
   const [chambres, setChambres] = useState<Chambre[]>([]);
   const [evenements, setEvenements] = useState<EvenementCalendrier[]>([]);
+  const [clients, setClients] = useState<Client[]>([]);
   const [loading, setLoading] = useState(true);
   const [mounted, setMounted] = useState(false);
   const [filterChambre, setFilterChambre] = useState<number | null>(null);
@@ -305,10 +318,11 @@ export default function CalendrierPage() {
   const [showSaveFilter, setShowSaveFilter] = useState(false);
   const [filterName, setFilterName] = useState('');
   const [plageHoraire, setPlageHoraire] = useState<PlageHoraire>('toute');
-  const [clientsList, setClientsList] = useState<{ id: number; prenom: string; nom: string }[]>([]);
   const [showFilters, setShowFilters] = useState(false);
+  const [lastRefresh, setLastRefresh] = useState<Date>(new Date());
 
   const scrollRef = useRef<HTMLDivElement>(null);
+  const isFetching = useRef(false);
 
   // ─── FILTRES SAUVEGARDÉS ──────────────────────────────────
   useEffect(() => {
@@ -335,7 +349,7 @@ export default function CalendrierPage() {
     localStorage.setItem('calendrier_filtres', JSON.stringify(updated));
     setShowSaveFilter(false);
     setFilterName('');
-    toast.success('Filtre sauvegardé');
+    toast.success('✅ Filtre sauvegardé');
   };
 
   const applySavedFilter = (f: FiltresSauvegardes) => {
@@ -344,7 +358,7 @@ export default function CalendrierPage() {
     if (f.vue) setVue(f.vue);
     if (f.date) { const d = new Date(f.date); if (!isNaN(d.getTime())) setCurrentDate(d); }
     setFiltreActif(f.nom);
-    toast.success(`Filtre « ${f.nom} » appliqué`);
+    toast.success(`📋 Filtre « ${f.nom} » appliqué`);
   };
 
   const deleteSavedFilter = (nom: string) => {
@@ -352,6 +366,7 @@ export default function CalendrierPage() {
     setFiltresSauvegardes(updated);
     localStorage.setItem('calendrier_filtres', JSON.stringify(updated));
     if (filtreActif === nom) setFiltreActif(null);
+    toast.success('🗑️ Filtre supprimé');
   };
 
   const resetFilters = () => {
@@ -360,15 +375,18 @@ export default function CalendrierPage() {
     setFilterClient(null);
     setPlageHoraire('toute');
     setFiltreActif(null);
+    toast.success('🔄 Filtres réinitialisés');
   };
 
   // ─── DONNÉES ─────────────────────────────────────────────
+
   const generateEvenements = useCallback((
     chambresData: Chambre[],
     reservationsData: Reservation[],
     blockagesData: Blockage[]
   ): EvenementCalendrier[] => {
     const events: EvenementCalendrier[] = [];
+    
     reservationsData.forEach((r: any) => {
       const heureArrivee = r.heureArrivee || r.horaireArriveeTardive || '';
       let plage: PlageHoraire = 'toute';
@@ -376,6 +394,17 @@ export default function CalendrierPage() {
         const h = parseInt(heureArrivee.split(':')[0]);
         plage = h < 12 ? 'matin' : h < 18 ? 'apres-midi' : 'soir';
       }
+      
+      let nbNuits = r.nbNuits || 0;
+      if (!nbNuits && r.dateArrivee && r.dateDepart) {
+        const arrivee = new Date(r.dateArrivee);
+        const depart = new Date(r.dateDepart);
+        nbNuits = Math.max(1, Math.ceil((depart.getTime() - arrivee.getTime()) / (1000 * 60 * 60 * 24)));
+      }
+      
+      const client = r.client || {};
+      const chambre = r.chambre || {};
+      
       events.push({
         id: r.id,
         type: 'RESERVATION',
@@ -383,13 +412,13 @@ export default function CalendrierPage() {
         dateFin: r.dateDepart,
         statut: r.statut,
         reservationId: r.id,
-        clientPrenom: r.client?.prenom ?? r.clientPrenom ?? '',
-        clientNom: r.client?.nom ?? r.clientNom ?? '',
-        clientId: r.client?.id ?? r.clientId ?? 0,
-        chambreId: r.chambreId ?? r.chambre?.id ?? 0,
-        chambreNom: r.chambre?.nom ?? r.chambreNom ?? '',
-        chambreNumero: r.chambre?.numero ?? r.chambreNumero ?? '',
-        nbNuits: r.nbNuits || 0,
+        clientPrenom: client.prenom || r.clientPrenom || '',
+        clientNom: client.nom || r.clientNom || '',
+        clientId: client.id || r.clientId || 0,
+        chambreId: r.chambreId || chambre.id || 0,
+        chambreNom: chambre.nom || r.chambreNom || '',
+        chambreNumero: chambre.numero || r.chambreNumero || '',
+        nbNuits: nbNuits,
         nbAdultes: r.nbAdultes || 2,
         nbEnfants: r.nbEnfants || 0,
         heureArrivee: heureArrivee || '15:00',
@@ -397,6 +426,7 @@ export default function CalendrierPage() {
         plageHoraire: plage,
       });
     });
+    
     blockagesData.forEach((b: any) => {
       const chambre = chambresData.find(c => c.id === b.chambreId);
       events.push({
@@ -410,55 +440,129 @@ export default function CalendrierPage() {
         chambreNumero: chambre?.numero || '',
       });
     });
+    
     return events;
   }, []);
 
   const loadData = useCallback(async () => {
+    if (isFetching.current) return;
+    isFetching.current = true;
     setLoading(true);
+
     try {
       const monthStart = startOfMonth(currentDate);
       const monthEnd = endOfMonth(currentDate);
+      const startStr = format(monthStart, 'yyyy-MM-dd');
+      const endStr = format(monthEnd, 'yyyy-MM-dd');
+
       const [chambresRes, reservationsRes, blockagesRes, clientsRes] = await Promise.all([
         api.get('/chambres'),
-        api.get('/reservations', { params: { dateDebut: format(monthStart, 'yyyy-MM-dd'), dateFin: format(monthEnd, 'yyyy-MM-dd') } }),
-        api.get('/chambres/blockages', { params: { dateDebut: format(monthStart, 'yyyy-MM-dd'), dateFin: format(monthEnd, 'yyyy-MM-dd') } }).catch(() => ({ data: { data: [] } })),
-        api.get('/clients?limit=100').catch(() => ({ data: { data: [] } })),
+        api.get('/reservations', { 
+          params: { 
+            dateDebut: startStr, 
+            dateFin: endStr,
+            limit: 500 
+          } 
+        }).catch(() => ({ data: { data: [] } })),
+        api.get('/chambres/blockages', { 
+          params: { dateDebut: startStr, dateFin: endStr } 
+        }).catch(() => ({ data: { data: [] } })),
+        api.get('/clients?limit=200').catch(() => ({ data: { data: [] } })),
       ]);
-      const chambresData = chambresRes.data.data ?? chambresRes.data;
-      const reservationsData = reservationsRes.data.data ?? reservationsRes.data;
+
+      const chambresData = chambresRes.data?.data ?? chambresRes.data ?? [];
+      const reservationsData = reservationsRes.data?.data ?? reservationsRes.data ?? [];
       const blockagesData = blockagesRes.data?.data ?? [];
       const clientsData = clientsRes.data?.data ?? [];
+
       setChambres(Array.isArray(chambresData) ? chambresData : []);
-      setClientsList(Array.isArray(clientsData) ? clientsData : []);
+      setClients(Array.isArray(clientsData) ? clientsData : []);
       setEvenements(generateEvenements(
         Array.isArray(chambresData) ? chambresData : [],
         Array.isArray(reservationsData) ? reservationsData : [],
         Array.isArray(blockagesData) ? blockagesData : [],
       ));
-    } catch {
-      toast.error('Erreur lors du chargement');
+      setLastRefresh(new Date());
+
+    } catch (error) {
+      console.error('[Calendrier] Erreur chargement:', error);
+      toast.error('Erreur lors du chargement du calendrier');
     } finally {
       setLoading(false);
-      setTimeout(() => setMounted(true), 100);
+      isFetching.current = false;
+      setTimeout(() => setMounted(true), 150);
     }
   }, [currentDate, generateEvenements]);
 
-  useEffect(() => { loadData(); }, [loadData]);
-  useEffect(() => { if (scrollRef.current) scrollRef.current.scrollTop = 0; }, [vue, currentDate]);
+  // ─── WEBSOCKET ────────────────────────────────────────────
+
+  useEffect(() => {
+    // ✅ S'abonner aux canaux pertinents
+    if (isConnected) {
+      subscribeToChannel('calendrier');
+      subscribeToChannel('reservations');
+      subscribeToChannel('chambres');
+    }
+
+    // ✅ Écouter les événements DOM (fallback)
+    const handleRefresh = () => {
+      console.log('🔄 [Calendrier] Refresh via DOM event');
+      loadData();
+    };
+
+    window.addEventListener('refresh-chambres', handleRefresh);
+    window.addEventListener('chambre-updated', handleRefresh);
+    window.addEventListener('reservation-created', handleRefresh);
+    window.addEventListener('reservation-updated', handleRefresh);
+    window.addEventListener('reservation-cancelled', handleRefresh);
+
+    // ✅ Polling de secours toutes les 30 secondes
+    const interval = setInterval(() => {
+      if (!isConnected) {
+        loadData();
+      }
+    }, 30000);
+
+    return () => {
+      window.removeEventListener('refresh-chambres', handleRefresh);
+      window.removeEventListener('chambre-updated', handleRefresh);
+      window.removeEventListener('reservation-created', handleRefresh);
+      window.removeEventListener('reservation-updated', handleRefresh);
+      window.removeEventListener('reservation-cancelled', handleRefresh);
+      clearInterval(interval);
+    };
+  }, [subscribeToChannel, isConnected, loadData]);
+
+  // ─── CHARGEMENT INITIAL ───────────────────────────────────
+
+  useEffect(() => {
+    loadData();
+  }, [loadData]);
+
+  useEffect(() => {
+    if (scrollRef.current) scrollRef.current.scrollTop = 0;
+  }, [vue, currentDate]);
 
   // ─── NAVIGATION ───────────────────────────────────────────
+
   const prevPeriod = () => {
     if (vue === 'week') setCurrentDate(d => subWeeks(d, 1));
     else if (vue === 'trimestre') setCurrentDate(d => subMonths(d, 3));
     else setCurrentDate(d => subMonths(d, 1));
   };
+
   const nextPeriod = () => {
     if (vue === 'week') setCurrentDate(d => addWeeks(d, 1));
     else if (vue === 'trimestre') setCurrentDate(d => addMonths(d, 3));
     else setCurrentDate(d => addMonths(d, 1));
   };
 
+  const goToToday = () => {
+    setCurrentDate(new Date());
+  };
+
   // ─── CALCULS ─────────────────────────────────────────────
+
   const daysInMonth = useMemo(() => {
     return eachDayOfInterval({ start: startOfMonth(currentDate), end: endOfMonth(currentDate) });
   }, [currentDate]);
@@ -490,11 +594,18 @@ export default function CalendrierPage() {
 
   const getDayStats = useCallback((day: Date) => {
     const events = getEventsForDay(day);
-    const reservations = events.filter(e => e.type === 'RESERVATION' && e.statut !== 'ANNULEE');
+    const reservations = events.filter(e => e.type === 'RESERVATION' && e.statut !== 'ANNULEE' && e.statut !== 'NO_SHOW');
     const chambresOccupees = new Set(reservations.map(e => e.chambreId)).size;
     const totalChambres = chambres.filter(c => c.statut === 'DISPONIBLE' || c.statut === 'BLOQUEE').length;
     const tauxOccupation = totalChambres > 0 ? (chambresOccupees / totalChambres) * 100 : 0;
-    return { reservations: reservations.length, chambresOccupees, totalChambres, tauxOccupation, events };
+    return { 
+      reservations: reservations.length, 
+      chambresOccupees, 
+      totalChambres, 
+      tauxOccupation, 
+      events,
+      totalEvents: events.length
+    };
   }, [getEventsForDay, chambres]);
 
   const globalStats = useMemo(() => {
@@ -512,15 +623,19 @@ export default function CalendrierPage() {
       tauxOccupation: maxOcc > 0 ? (totalOccupied / maxOcc) * 100 : 0,
       chambresDisponibles: chambres.filter(c => c.statut === 'DISPONIBLE').length,
       chambresTotal: chambres.length,
+      totalNuits: daysInMonth.reduce((sum, d) => sum + getDayStats(d).chambresOccupees, 0),
     };
   }, [daysInMonth, chambres, getDayStats]);
 
   // ─── LABEL PÉRIODE ───────────────────────────────────────
+
   const periodeLabel = useMemo(() => {
     if (vue === 'week') return `Semaine ${getWeek(currentDate, { weekStartsOn: 1 })} · ${format(currentDate, 'MMMM yyyy', { locale: fr })}`;
     if (vue === 'trimestre') return `${format(currentDate, 'MMMM', { locale: fr })} – ${format(addMonths(currentDate, 2), 'MMMM yyyy', { locale: fr })}`;
     return format(currentDate, 'MMMM yyyy', { locale: fr });
   }, [vue, currentDate]);
+
+  const hasActiveFilters = !!(filterChambre || filterStatut || filterClient || plageHoraire !== 'toute');
 
   // ──────────────────────────────────────────────────────────
   // VUES
@@ -528,24 +643,21 @@ export default function CalendrierPage() {
 
   const renderMonthView = () => (
     <div className="grid grid-cols-7">
-      {/* Header jours */}
       {['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim'].map(j => (
         <div
           key={j}
           className={`py-3 text-center text-[11px] font-semibold uppercase tracking-widest border-b border-gray-100 ${
-            ['Sam', 'Dim'].includes(j) ? 'text-gray-300' : 'text-gray-400'
+            ['Sam', 'Dim'].includes(j) ? 'text-gray-300' : 'text-gray-500'
           }`}
         >
           {j}
         </div>
       ))}
 
-      {/* Jours vides */}
       {Array.from({ length: firstDayOffset }).map((_, i) => (
         <div key={`e-${i}`} className="min-h-[110px] border-r border-b border-gray-50 bg-gray-50/40" />
       ))}
 
-      {/* Jours du mois */}
       {daysInMonth.map(day => {
         const stats = getDayStats(day);
         const weekend = isWeekend(day);
@@ -556,16 +668,15 @@ export default function CalendrierPage() {
           <div
             key={day.toISOString()}
             onClick={() => navigate(`/reservations?date=${format(day, 'yyyy-MM-dd')}`)}
-            className={`group min-h-[110px] border-r border-b border-gray-100/80 p-2 cursor-pointer transition-all duration-200 hover:bg-palmier-50/40 hover:z-10 relative ${
+            className={`group min-h-[110px] border-r border-b border-gray-100/80 p-2 cursor-pointer transition-all duration-200 hover:bg-emerald-50/40 hover:z-10 relative ${
               weekend ? 'bg-gray-50/30' : ''
-            } ${today ? 'ring-2 ring-inset ring-palmier-400/60 bg-palmier-50/20' : ''}`}
+            } ${today ? 'ring-2 ring-inset ring-emerald-400/60 bg-emerald-50/20' : ''}`}
           >
-            {/* Numéro du jour */}
             <div className="flex items-start justify-between mb-1.5">
               <span
                 className={`inline-flex items-center justify-center w-7 h-7 rounded-full text-sm font-semibold transition-all duration-200 ${
                   today
-                    ? 'bg-palmier-600 text-white shadow-md shadow-palmier-200'
+                    ? 'bg-emerald-600 text-white shadow-md shadow-emerald-200'
                     : weekend
                     ? 'text-gray-300'
                     : 'text-gray-700 group-hover:bg-gray-100'
@@ -580,18 +691,16 @@ export default function CalendrierPage() {
               )}
             </div>
 
-            {/* Événements */}
             <div className="space-y-0.5">
               {stats.events.slice(0, 3).map(evt => {
                 const isStart = isSameDay(day, parseISO(evt.dateDebut));
                 if (!isStart) {
-                  // Continuation bar
                   const colorSet = evt.type === 'RESERVATION' && evt.statut ? STATUT_COLORS[evt.statut] : null;
                   return (
                     <div
                       key={evt.id}
                       className={`h-5 rounded-sm opacity-30 ${
-                        colorSet ? colorSet.bg.split(' ')[0] : 'bg-gray-200'
+                        colorSet ? colorSet.bg : 'bg-gray-200'
                       }`}
                     />
                   );
@@ -618,11 +727,10 @@ export default function CalendrierPage() {
               )}
             </div>
 
-            {/* Barre d'occupation */}
             {stats.tauxOccupation > 0 && (
               <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-gray-100">
                 <div
-                  className="h-full bg-gradient-to-r from-palmier-400 to-palmier-500 transition-all duration-700"
+                  className="h-full bg-gradient-to-r from-emerald-400 to-emerald-500 transition-all duration-700"
                   style={{ width: `${Math.min(stats.tauxOccupation, 100)}%` }}
                 />
               </div>
@@ -649,13 +757,13 @@ export default function CalendrierPage() {
             <tr className="border-b border-gray-100">
               <th className="w-28 px-4 py-3 text-left" />
               {weekDays.map(day => (
-                <th key={day.toISOString()} className={`px-2 py-3 text-center ${isToday(day) ? 'bg-palmier-50/60' : ''}`}>
-                  <div className={`text-[11px] font-semibold uppercase tracking-widest ${isWeekend(day) ? 'text-gray-300' : 'text-gray-400'}`}>
+                <th key={day.toISOString()} className={`px-2 py-3 text-center ${isToday(day) ? 'bg-emerald-50/60' : ''}`}>
+                  <div className={`text-[11px] font-semibold uppercase tracking-widest ${isWeekend(day) ? 'text-gray-300' : 'text-gray-500'}`}>
                     {format(day, 'EEE', { locale: fr })}
                   </div>
                   <div className={`inline-flex items-center justify-center w-8 h-8 mx-auto mt-0.5 rounded-full text-sm font-bold ${
                     isToday(day)
-                      ? 'bg-palmier-600 text-white'
+                      ? 'bg-emerald-600 text-white'
                       : isWeekend(day)
                       ? 'text-gray-300'
                       : 'text-gray-800'
@@ -681,7 +789,7 @@ export default function CalendrierPage() {
                     e => e.plageHoraire === plage.key || e.plageHoraire === 'toute'
                   );
                   return (
-                    <td key={day.toISOString()} className={`px-1.5 py-2 align-top ${isToday(day) ? 'bg-palmier-50/30' : ''}`}>
+                    <td key={day.toISOString()} className={`px-1.5 py-2 align-top ${isToday(day) ? 'bg-emerald-50/30' : ''}`}>
                       <div className="space-y-0.5 min-h-[40px]">
                         {events.slice(0, 3).map(evt => (
                           <EventChip
@@ -710,7 +818,7 @@ export default function CalendrierPage() {
   };
 
   const renderChambreView = () => {
-    const days = daysInMonth.slice(0, 21); // montrer 3 semaines max pour lisibilité
+    const days = daysInMonth.slice(0, 21);
     return (
       <div className="overflow-x-auto" ref={scrollRef}>
         <table className="w-full text-xs">
@@ -719,8 +827,8 @@ export default function CalendrierPage() {
               <th className="px-4 py-3 text-left sticky left-0 bg-white/95 min-w-[160px] z-20 font-semibold text-gray-500 uppercase tracking-wider text-[10px]">Chambre</th>
               <th className="px-3 py-3 text-left min-w-[100px] font-semibold text-gray-500 uppercase tracking-wider text-[10px]">Statut</th>
               {days.map(day => (
-                <th key={day.toISOString()} className={`px-0 py-3 text-center min-w-[34px] ${isWeekend(day) ? 'text-gray-300 bg-gray-50/60' : ''} ${isToday(day) ? 'bg-palmier-50' : ''}`}>
-                  <div className={`text-[11px] font-bold ${isToday(day) ? 'text-palmier-600' : isWeekend(day) ? 'text-gray-300' : 'text-gray-600'}`}>
+                <th key={day.toISOString()} className={`px-0 py-3 text-center min-w-[34px] ${isWeekend(day) ? 'text-gray-300 bg-gray-50/60' : ''} ${isToday(day) ? 'bg-emerald-50' : ''}`}>
+                  <div className={`text-[11px] font-bold ${isToday(day) ? 'text-emerald-600' : isWeekend(day) ? 'text-gray-300' : 'text-gray-600'}`}>
                     {format(day, 'd')}
                   </div>
                   <div className={`text-[9px] ${isWeekend(day) ? 'text-gray-200' : 'text-gray-300'}`}>
@@ -732,8 +840,8 @@ export default function CalendrierPage() {
           </thead>
           <tbody className="divide-y divide-gray-50">
             {filteredChambres.map(chambre => (
-              <tr key={chambre.id} className="hover:bg-palmier-50/20 transition-colors group">
-                <td className="px-4 py-2.5 sticky left-0 bg-white group-hover:bg-palmier-50/20 border-r border-gray-50 z-10">
+              <tr key={chambre.id} className="hover:bg-emerald-50/20 transition-colors group">
+                <td className="px-4 py-2.5 sticky left-0 bg-white group-hover:bg-emerald-50/20 border-r border-gray-50 z-10">
                   <div className="font-semibold text-gray-800 text-sm">{chambre.nom}</div>
                   <div className="text-[10px] text-gray-400">N°{chambre.numero}</div>
                 </td>
@@ -770,94 +878,6 @@ export default function CalendrierPage() {
     );
   };
 
-  const renderClientView = () => {
-    const clientMap = new Map<number, { nom: string; prenom: string; events: EvenementCalendrier[] }>();
-    filteredEvents.forEach(evt => {
-      if (evt.type === 'RESERVATION' && evt.clientId && evt.clientNom) {
-        if (!clientMap.has(evt.clientId)) clientMap.set(evt.clientId, { nom: evt.clientNom, prenom: evt.clientPrenom || '', events: [] });
-        clientMap.get(evt.clientId)!.events.push(evt);
-      }
-    });
-    const list = Array.from(clientMap.entries()).sort((a, b) => a[1].nom.localeCompare(b[1].nom));
-
-    if (list.length === 0) {
-      return (
-        <div className="flex flex-col items-center justify-center py-20 gap-4 text-gray-400">
-          <User size={40} strokeWidth={1.5} />
-          <p className="text-sm">Aucune réservation sur cette période</p>
-        </div>
-      );
-    }
-
-    return (
-      <div>
-        <table className="w-full text-sm">
-          <thead className="border-b border-gray-100">
-            <tr className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider">
-              <th className="px-5 py-3 text-left">Client</th>
-              <th className="px-4 py-3 text-left">Chambre</th>
-              <th className="px-4 py-3 text-left">Statut</th>
-              <th className="px-4 py-3 text-left">Arrivée</th>
-              <th className="px-4 py-3 text-left">Départ</th>
-              <th className="px-4 py-3 text-right">Nuits</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-gray-50">
-            {list.map(([clientId, data]) => {
-              const evt = data.events[0];
-              const colorSet = evt.statut ? STATUT_COLORS[evt.statut] : null;
-              return (
-                <tr
-                  key={clientId}
-                  onClick={() => evt.reservationId && navigate(`/reservations/${evt.reservationId}`)}
-                  className="hover:bg-palmier-50/30 transition-colors cursor-pointer group"
-                >
-                  <td className="px-5 py-3.5">
-                    <div className="flex items-center gap-3">
-                      <div className="w-9 h-9 rounded-full bg-gradient-to-br from-palmier-100 to-palmier-200 flex items-center justify-center text-palmier-700 font-bold text-sm shrink-0">
-                        {data.prenom.charAt(0)}{data.nom.charAt(0)}
-                      </div>
-                      <div>
-                        <div className="font-semibold text-gray-900">{data.prenom} {data.nom}</div>
-                        {data.events.length > 1 && (
-                          <div className="text-[11px] text-gray-400">{data.events.length} réservations</div>
-                        )}
-                      </div>
-                    </div>
-                  </td>
-                  <td className="px-4 py-3.5">
-                    <div className="font-medium text-gray-800">{evt.chambreNom || '—'}</div>
-                    {evt.chambreNumero && <div className="text-[11px] text-gray-400">N°{evt.chambreNumero}</div>}
-                  </td>
-                  <td className="px-4 py-3.5">
-                    {colorSet && evt.statut && (
-                      <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium border ${colorSet.pill}`}>
-                        <span className={`w-1.5 h-1.5 rounded-full ${colorSet.dot}`} />
-                        {STATUT_LABELS[evt.statut]}
-                      </span>
-                    )}
-                  </td>
-                  <td className="px-4 py-3.5">
-                    <div className="text-gray-700">{format(parseISO(evt.dateDebut), 'dd MMM yyyy', { locale: fr })}</div>
-                    {evt.heureArrivee && <div className="text-[11px] text-palmier-600">{evt.heureArrivee}</div>}
-                  </td>
-                  <td className="px-4 py-3.5">
-                    <div className="text-gray-700">{format(parseISO(evt.dateFin), 'dd MMM yyyy', { locale: fr })}</div>
-                    {evt.heureDepart && <div className="text-[11px] text-gray-400">{evt.heureDepart}</div>}
-                  </td>
-                  <td className="px-4 py-3.5 text-right">
-                    <span className="font-bold text-palmier-600 text-base">{evt.nbNuits || 0}</span>
-                    <span className="text-gray-400 text-xs ml-1">n</span>
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
-    );
-  };
-
   const renderTrimestreView = () => {
     const mois = [currentDate, addMonths(currentDate, 1), addMonths(currentDate, 2)];
     return (
@@ -886,15 +906,15 @@ export default function CalendrierPage() {
                       <div
                         key={day.toISOString()}
                         className={`relative flex items-center justify-center aspect-square text-[11px] rounded-md m-0.5 cursor-pointer transition-all ${
-                          today ? 'bg-palmier-600 text-white font-bold' :
-                          stats.chambresOccupees > 0 ? 'bg-palmier-50 text-palmier-800 font-medium' :
+                          today ? 'bg-emerald-600 text-white font-bold' :
+                          stats.chambresOccupees > 0 ? 'bg-emerald-50 text-emerald-800 font-medium' :
                           weekend ? 'text-gray-300' : 'text-gray-600 hover:bg-gray-100'
                         }`}
                         onClick={() => navigate(`/reservations?date=${format(day, 'yyyy-MM-dd')}`)}
                       >
                         {format(day, 'd')}
                         {stats.chambresOccupees > 0 && !today && (
-                          <span className="absolute bottom-0.5 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full bg-palmier-400" />
+                          <span className="absolute bottom-0.5 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full bg-emerald-400" />
                         )}
                       </div>
                     );
@@ -916,10 +936,8 @@ export default function CalendrierPage() {
   // RENDU PRINCIPAL
   // ──────────────────────────────────────────────────────────
 
-  const hasActiveFilters = !!(filterChambre || filterStatut || filterClient || plageHoraire !== 'toute');
-
   return (
-    <div className="min-h-screen bg-[#f8f9fc] p-4 lg:p-6 space-y-4">
+    <div className="min-h-screen bg-[#f8fafc] p-4 lg:p-6 space-y-4">
 
       <style>{`
         @keyframes slideUp {
@@ -946,14 +964,14 @@ export default function CalendrierPage() {
       {/* ══ EN-TÊTE ══════════════════════════════════════ */}
       <div className={`flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 ${mounted ? 'anim-slide' : 'opacity-0'}`}>
         <div className="flex items-center gap-3.5">
-          <div className="w-11 h-11 rounded-2xl bg-gradient-to-br from-palmier-500 to-palmier-700 flex items-center justify-center shadow-lg shadow-palmier-300/40">
+          <div className="w-11 h-11 rounded-2xl bg-gradient-to-br from-emerald-500 to-emerald-700 flex items-center justify-center shadow-lg shadow-emerald-300/40">
             <CalendarIcon size={20} className="text-white" />
           </div>
           <div>
             <h1 className="text-xl font-bold text-gray-900 leading-tight">Calendrier</h1>
             <div className="flex items-center gap-3 mt-0.5 text-[12px] text-gray-400 flex-wrap">
               <span className="flex items-center gap-1">
-                <BedDouble size={12} className="text-palmier-500" />
+                <BedDouble size={12} className="text-emerald-500" />
                 {globalStats.chambresDisponibles}/{globalStats.chambresTotal} disponibles
               </span>
               <span className="w-px h-3 bg-gray-200" />
@@ -963,8 +981,18 @@ export default function CalendrierPage() {
               </span>
               <span className="w-px h-3 bg-gray-200" />
               <span>{globalStats.totalReservations} réservations</span>
+              <span className="w-px h-3 bg-gray-200" />
+              {isConnected ? (
+                <span className="flex items-center gap-1 text-emerald-500 text-[11px]">
+                  <WifiIcon size={11} className="animate-pulse" /> Temps réel
+                </span>
+              ) : (
+                <span className="flex items-center gap-1 text-gray-400 text-[11px]">
+                  <WifiOff size={11} /> Hors ligne
+                </span>
+              )}
               {filtreActif && (
-                <span className="flex items-center gap-1 bg-palmier-50 text-palmier-700 px-2 py-0.5 rounded-full text-[11px] font-medium border border-palmier-100">
+                <span className="flex items-center gap-1 bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded-full text-[11px] font-medium border border-emerald-100">
                   <BookmarkCheck size={10} /> {filtreActif}
                 </span>
               )}
@@ -983,7 +1011,7 @@ export default function CalendrierPage() {
           </button>
           <button
             onClick={() => navigate('/reservations/nouvelle')}
-            className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-palmier-600 to-palmier-700 text-white rounded-xl text-sm font-semibold shadow-md shadow-palmier-300/40 hover:from-palmier-700 hover:to-palmier-800 hover:shadow-lg transition-all duration-200 active:scale-95"
+            className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-emerald-600 to-emerald-700 text-white rounded-xl text-sm font-semibold shadow-md shadow-emerald-300/40 hover:from-emerald-700 hover:to-emerald-800 hover:shadow-lg transition-all duration-200 active:scale-95"
           >
             <Plus size={16} />
             Nouvelle réservation
@@ -993,15 +1021,34 @@ export default function CalendrierPage() {
 
       {/* ══ STATS ════════════════════════════════════════ */}
       <div className={`grid grid-cols-2 sm:grid-cols-4 gap-3 ${mounted ? 'anim-slide delay-1' : 'opacity-0'}`}>
-        <StatPill label="Chambres" value={`${globalStats.chambresDisponibles}/${globalStats.chambresTotal}`} icon={<BedDouble size={16} />} accent="palmier" sub="disponibles" />
+        <StatPill 
+          label="Chambres" 
+          value={`${globalStats.chambresDisponibles}/${globalStats.chambresTotal}`} 
+          icon={<BedDouble size={16} />} 
+          accent="emerald" 
+          sub="disponibles" 
+        />
         <StatPill
           label="Occupation"
           value={`${globalStats.tauxOccupation.toFixed(0)}%`}
           icon={<TrendingUp size={16} />}
           accent={globalStats.tauxOccupation > 70 ? 'emerald' : globalStats.tauxOccupation > 40 ? 'amber' : 'rose'}
+          sub={`${globalStats.totalNuits} nuits occupées`}
         />
-        <StatPill label="Réservations" value={globalStats.totalReservations} icon={<Users size={16} />} accent="sky" />
-        <StatPill label="Blocages" value={globalStats.totalBlockages} icon={<Clock size={16} />} accent="slate" sub="Maintenance / Indispo" />
+        <StatPill 
+          label="Réservations" 
+          value={globalStats.totalReservations} 
+          icon={<Users size={16} />} 
+          accent="sky" 
+          sub="sur la période" 
+        />
+        <StatPill 
+          label="Blocages" 
+          value={globalStats.totalBlockages} 
+          icon={<Clock size={16} />} 
+          accent="slate" 
+          sub="Maintenance / Indispo" 
+        />
       </div>
 
       {/* ══ BARRE NAVIGATION ═════════════════════════════ */}
@@ -1016,8 +1063,8 @@ export default function CalendrierPage() {
               <ChevronLeft size={16} />
             </button>
             <button
-              onClick={() => setCurrentDate(new Date())}
-              className="px-3 py-1.5 text-xs font-semibold text-palmier-600 bg-palmier-50 rounded-lg hover:bg-palmier-100 transition-colors"
+              onClick={goToToday}
+              className="px-3 py-1.5 text-xs font-semibold text-emerald-600 bg-emerald-50 rounded-lg hover:bg-emerald-100 transition-colors"
             >
               Aujourd'hui
             </button>
@@ -1040,68 +1087,66 @@ export default function CalendrierPage() {
             onClick={() => setShowFilters(f => !f)}
             className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-xl border transition-all ${
               hasActiveFilters || showFilters
-                ? 'bg-palmier-50 border-palmier-200 text-palmier-700'
+                ? 'bg-emerald-50 border-emerald-200 text-emerald-700'
                 : 'border-gray-200 text-gray-500 hover:bg-gray-50'
             }`}
           >
             <Filter size={13} />
             Filtres
             {hasActiveFilters && (
-              <span className="w-4 h-4 rounded-full bg-palmier-600 text-white text-[9px] font-bold flex items-center justify-center">
+              <span className="w-4 h-4 rounded-full bg-emerald-600 text-white text-[9px] font-bold flex items-center justify-center">
                 {[filterChambre, filterStatut, filterClient !== null && filterClient, plageHoraire !== 'toute'].filter(Boolean).length}
               </span>
             )}
           </button>
         </div>
 
-        {/* Panneau filtres (dépliable) */}
+        {/* Panneau filtres */}
         {showFilters && (
           <div className="px-4 py-3 bg-gray-50/60 border-b border-gray-100 flex flex-wrap gap-3 items-end anim-fade">
-            <div className="flex flex-col gap-1">
+            <div className="flex flex-col gap-1 min-w-[140px]">
               <label className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Chambre</label>
               <select
                 value={filterChambre || ''}
                 onChange={e => setFilterChambre(e.target.value ? Number(e.target.value) : null)}
-                className="border border-gray-200 rounded-xl px-3 py-2 text-sm bg-white focus:ring-2 focus:ring-palmier-400 outline-none text-gray-800"
+                className="border border-gray-200 rounded-xl px-3 py-2 text-sm bg-white focus:ring-2 focus:ring-emerald-400 outline-none text-gray-800"
               >
                 <option value="">Toutes</option>
                 {chambres.map(c => <option key={c.id} value={c.id}>{c.nom}</option>)}
               </select>
             </div>
 
-            <div className="flex flex-col gap-1">
+            <div className="flex flex-col gap-1 min-w-[140px]">
               <label className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Statut</label>
               <select
                 value={filterStatut}
                 onChange={e => setFilterStatut(e.target.value)}
-                className="border border-gray-200 rounded-xl px-3 py-2 text-sm bg-white focus:ring-2 focus:ring-palmier-400 outline-none text-gray-800"
+                className="border border-gray-200 rounded-xl px-3 py-2 text-sm bg-white focus:ring-2 focus:ring-emerald-400 outline-none text-gray-800"
               >
                 <option value="">Tous</option>
                 {Object.entries(STATUT_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
               </select>
             </div>
 
-            {vue === 'client' && (
-              <div className="flex flex-col gap-1">
-                <label className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Client</label>
-                <select
-                  value={filterClient || ''}
-                  onChange={e => setFilterClient(e.target.value ? Number(e.target.value) : null)}
-                  className="border border-gray-200 rounded-xl px-3 py-2 text-sm bg-white focus:ring-2 focus:ring-palmier-400 outline-none text-gray-800"
-                >
-                  <option value="">Tous</option>
-                  {clientsList.map(c => <option key={c.id} value={c.id}>{c.prenom} {c.nom}</option>)}
-                </select>
-              </div>
-            )}
+            <div className="flex flex-col gap-1 min-w-[140px]">
+              <label className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Client</label>
+              <select
+                value={filterClient || ''}
+                onChange={e => setFilterClient(e.target.value ? Number(e.target.value) : null)}
+                className="border border-gray-200 rounded-xl px-3 py-2 text-sm bg-white focus:ring-2 focus:ring-emerald-400 outline-none text-gray-800"
+              >
+                <option value="">Tous</option>
+                {clients.map(c => <option key={c.id} value={c.id}>{c.prenom} {c.nom}</option>)}
+              </select>
+            </div>
 
             {vue === 'week' && (
-              <div className="flex flex-col gap-1">
+              <div className="flex flex-col gap-1 min-w-[140px]">
                 <label className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Plage horaire</label>
                 <select
                   value={plageHoraire}
                   onChange={e => setPlageHoraire(e.target.value as PlageHoraire)}
-                  className="border border-gray-200 rounded-xl px-3 py-2 text-sm bg-white focus:ring-2 focus:ring-palmier-400 outline-none text-gray-800"
+                  className="border border-gray-200 rounded-xl px-3 py-2 text-sm bg-white focus:ring-2 focus:ring-emerald-400 outline-none text-gray-800"
                 >
                   <option value="toute">Toute la journée</option>
                   <option value="matin">🌅 Matin</option>
@@ -1113,13 +1158,16 @@ export default function CalendrierPage() {
 
             <div className="flex items-end gap-2 ml-auto">
               {hasActiveFilters && (
-                <button onClick={resetFilters} className="px-3 py-2 text-xs text-gray-500 hover:text-gray-700 border border-gray-200 rounded-xl bg-white transition-colors">
+                <button 
+                  onClick={resetFilters} 
+                  className="px-3 py-2 text-xs text-gray-500 hover:text-gray-700 border border-gray-200 rounded-xl bg-white transition-colors hover:bg-gray-50"
+                >
                   Réinitialiser
                 </button>
               )}
               <button
                 onClick={() => setShowSaveFilter(true)}
-                className="flex items-center gap-1.5 px-3 py-2 text-xs font-medium text-palmier-600 border border-palmier-200 rounded-xl bg-palmier-50 hover:bg-palmier-100 transition-colors"
+                className="flex items-center gap-1.5 px-3 py-2 text-xs font-medium text-emerald-600 border border-emerald-200 rounded-xl bg-emerald-50 hover:bg-emerald-100 transition-colors"
               >
                 <Save size={12} /> Sauvegarder
               </button>
@@ -1137,8 +1185,8 @@ export default function CalendrierPage() {
                 onClick={() => applySavedFilter(f)}
                 className={`inline-flex items-center gap-1.5 px-2.5 py-1 text-[11px] font-medium rounded-full border cursor-pointer transition-all ${
                   filtreActif === f.nom
-                    ? 'bg-palmier-600 text-white border-palmier-600'
-                    : 'bg-gray-100 text-gray-600 border-gray-200 hover:border-palmier-200 hover:bg-palmier-50 hover:text-palmier-700'
+                    ? 'bg-emerald-600 text-white border-emerald-600'
+                    : 'bg-gray-100 text-gray-600 border-gray-200 hover:border-emerald-200 hover:bg-emerald-50 hover:text-emerald-700'
                 }`}
               >
                 <BookmarkCheck size={10} />
@@ -1163,7 +1211,6 @@ export default function CalendrierPage() {
               {vue === 'month' && renderMonthView()}
               {vue === 'week' && renderWeekView()}
               {vue === 'chambre' && renderChambreView()}
-              {vue === 'client' && renderClientView()}
               {vue === 'trimestre' && renderTrimestreView()}
             </div>
           )}
@@ -1180,7 +1227,6 @@ export default function CalendrierPage() {
             className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden anim-scale"
             onClick={e => e.stopPropagation()}
           >
-            {/* En-tête modale */}
             {(() => {
               const colorSet = selectedEvent.type === 'RESERVATION' && selectedEvent.statut
                 ? STATUT_COLORS[selectedEvent.statut] : null;
@@ -1193,7 +1239,7 @@ export default function CalendrierPage() {
                     <div>
                       <h3 className="font-bold text-gray-900 text-base leading-tight">
                         {selectedEvent.type === 'RESERVATION'
-                          ? `${selectedEvent.clientPrenom} ${selectedEvent.clientNom}`
+                          ? `${selectedEvent.clientPrenom || ''} ${selectedEvent.clientNom || ''}`.trim() || 'Réservation'
                           : selectedEvent.motif || selectedEvent.type}
                       </h3>
                       {selectedEvent.chambreNom && (
@@ -1211,7 +1257,6 @@ export default function CalendrierPage() {
               );
             })()}
 
-            {/* Corps modale */}
             <div className="p-6 space-y-3">
               {selectedEvent.type === 'RESERVATION' && selectedEvent.statut && (
                 <div className="flex items-center gap-2">
@@ -1219,7 +1264,7 @@ export default function CalendrierPage() {
                     <span className={`w-2 h-2 rounded-full ${STATUT_COLORS[selectedEvent.statut].dot}`} />
                     {STATUT_LABELS[selectedEvent.statut]}
                   </span>
-                  {selectedEvent.nbNuits && (
+                  {selectedEvent.nbNuits && selectedEvent.nbNuits > 0 && (
                     <span className="text-sm text-gray-500">{selectedEvent.nbNuits} nuit{selectedEvent.nbNuits > 1 ? 's' : ''}</span>
                   )}
                 </div>
@@ -1232,7 +1277,7 @@ export default function CalendrierPage() {
                     {format(parseISO(selectedEvent.dateDebut), 'dd MMM yyyy', { locale: fr })}
                   </p>
                   {selectedEvent.heureArrivee && (
-                    <p className="text-xs text-palmier-600">{selectedEvent.heureArrivee}</p>
+                    <p className="text-xs text-emerald-600">{selectedEvent.heureArrivee}</p>
                   )}
                 </div>
                 <div className="bg-gray-50 rounded-xl p-3">
@@ -1274,7 +1319,7 @@ export default function CalendrierPage() {
               {selectedEvent.type === 'RESERVATION' && selectedEvent.reservationId && (
                 <button
                   onClick={() => { setSelectedEvent(null); navigate(`/reservations/${selectedEvent.reservationId}`); }}
-                  className="flex items-center gap-2 px-4 py-2 text-sm font-semibold text-white bg-gradient-to-r from-palmier-600 to-palmier-700 rounded-xl hover:from-palmier-700 hover:to-palmier-800 shadow-md shadow-palmier-200/50 transition-all active:scale-95"
+                  className="flex items-center gap-2 px-4 py-2 text-sm font-semibold text-white bg-gradient-to-r from-emerald-600 to-emerald-700 rounded-xl hover:from-emerald-700 hover:to-emerald-800 shadow-md shadow-emerald-200/50 transition-all active:scale-95"
                 >
                   <Eye size={14} /> Voir la réservation
                 </button>
@@ -1288,8 +1333,8 @@ export default function CalendrierPage() {
       {showSaveFilter && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/30 backdrop-blur-sm anim-fade">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden anim-scale">
-            <div className="px-6 py-4 border-b border-gray-50 flex items-center gap-2">
-              <Save size={16} className="text-palmier-600" />
+            <div className="px-6 py-4 border-b border-gray-50 flex items-center gap-2 bg-gradient-to-r from-emerald-50 to-transparent">
+              <Save size={16} className="text-emerald-600" />
               <h3 className="font-bold text-gray-900">Sauvegarder le filtre</h3>
             </div>
             <div className="p-6">
@@ -1301,20 +1346,35 @@ export default function CalendrierPage() {
                 placeholder="Ex : Été 2026, Chambres VIP…"
                 autoFocus
                 onKeyDown={e => e.key === 'Enter' && saveFilters()}
-                className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-palmier-400 outline-none text-gray-800 placeholder-gray-300"
+                className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-emerald-400 outline-none text-gray-800 placeholder-gray-300 transition-shadow"
               />
             </div>
             <div className="px-6 py-4 border-t border-gray-50 flex justify-end gap-2">
-              <button onClick={() => { setShowSaveFilter(false); setFilterName(''); }} className="px-4 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded-xl transition-colors">
+              <button 
+                onClick={() => { setShowSaveFilter(false); setFilterName(''); }} 
+                className="px-4 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded-xl transition-colors"
+              >
                 Annuler
               </button>
-              <button onClick={saveFilters} className="flex items-center gap-1.5 px-4 py-2 text-sm font-semibold text-white bg-palmier-600 hover:bg-palmier-700 rounded-xl transition-colors">
+              <button 
+                onClick={saveFilters} 
+                className="flex items-center gap-1.5 px-4 py-2 text-sm font-semibold text-white bg-emerald-600 hover:bg-emerald-700 rounded-xl transition-colors shadow-md shadow-emerald-200/50"
+              >
                 <Bookmark size={14} /> Sauvegarder
               </button>
             </div>
           </div>
         </div>
       )}
+
+      {/* ══ BOUTON FLOATING POUR NOUVELLE RÉSERVATION ══════ */}
+      <button
+        onClick={() => navigate('/reservations/nouvelle')}
+        className="fixed bottom-6 right-6 z-30 flex items-center gap-2 px-5 py-3 bg-gradient-to-r from-emerald-600 to-emerald-700 text-white rounded-2xl shadow-lg shadow-emerald-300/50 hover:from-emerald-700 hover:to-emerald-800 hover:shadow-xl transition-all duration-200 active:scale-95 lg:hidden"
+      >
+        <Plus size={18} />
+        <span className="text-sm font-semibold">Réservation</span>
+      </button>
     </div>
   );
 }

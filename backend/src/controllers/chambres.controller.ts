@@ -2,11 +2,9 @@
 import { Request, Response } from 'express';
 import { Op } from 'sequelize';
 import { Room, Tariff, RoomEquipment, Equipment, RoomBlock, Reservation, User, Client } from '../models';
+import { WebSocketManager } from '../websocket/server';
 
 export class ChambresController {
-  /**
-   * Vérifier si une chambre est occupée aujourd'hui par une réservation active.
-   */
   private async estChambreOccupeeAujourdHui(chambreId: number): Promise<boolean> {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
@@ -14,7 +12,7 @@ export class ChambresController {
     const count = await Reservation.count({
       where: {
         chambreId,
-        statut: { [Op.notIn]: ['ANNULEE', 'NO_SHOW'] },
+        statut: { [Op.in]: ['CONFIRMEE', 'EN_ATTENTE_ACOMPTE'] },
         dateArrivee: { [Op.lte]: today },
         dateDepart: { [Op.gt]: today }
       }
@@ -23,9 +21,6 @@ export class ChambresController {
     return count > 0;
   }
 
-  /**
-   * Calculer le statut affiché d'une chambre sans casser les statuts manuels.
-   */
   private async calculerStatutAffichage(chambre: Room, reservationsActives: Reservation[] = []): Promise<string> {
     if (chambre.statut === 'EN_MAINTENANCE' || chambre.statut === 'HORS_SERVICE' || chambre.statut === 'BLOQUEE') {
       return chambre.statut;
@@ -48,10 +43,6 @@ export class ChambresController {
     return occupeeAujourdHui ? 'OCCUPEE' : 'DISPONIBLE';
   }
 
-  /**
-   * Déterminer la saison selon la date
-   * CDC section 3.1.2
-   */
   private determinerSaison(date: Date): string {
     const mois = date.getMonth() + 1;
     if (mois === 7 || mois === 8 || mois === 12) return 'HAUTE';
@@ -59,10 +50,6 @@ export class ChambresController {
     return 'BASSE';
   }
 
-  /**
-   * Récupérer toutes les chambres avec leurs équipements et tarifs
-   * CDC section 3.1.1 et 3.1.2
-   */
   getAll = async (req: Request, res: Response) => {
     try {
       const chambres = await Room.findAll({
@@ -85,7 +72,7 @@ export class ChambresController {
         const chambreJson = chambre.toJSON();
         const tarifs = chambreJson.tarifs || [];
         const statutAffichage = await this.calculerStatutAffichage(chambre);
-        
+
         const tarifsBySaison: Record<string, any> = {};
         tarifs.forEach((t: any) => {
           const saison = t.saison || 'MOYENNE';
@@ -143,11 +130,6 @@ export class ChambresController {
     }
   };
 
-  /**
-   * Récupérer les chambres disponibles sur une période donnée
-   * RG1: Une chambre ne peut avoir deux réservations actives sur la même période
-   * CDC section 3.2.1
-   */
   getDisponibles = async (req: Request, res: Response) => {
     try {
       const { dateArrivee, dateDepart, capacite } = req.query;
@@ -184,7 +166,7 @@ export class ChambresController {
           const conflictingReservations = await Reservation.count({
             where: {
               chambreId: room.id,
-              statut: { [Op.notIn]: ['ANNULEE', 'NO_SHOW'] },
+              statut: { [Op.in]: ['CONFIRMEE', 'EN_ATTENTE_ACOMPTE'] },
               [Op.or]: [
                 {
                   dateArrivee: { [Op.lt]: depart },
@@ -242,10 +224,6 @@ export class ChambresController {
     }
   };
 
-  /**
-   * Récupérer le calendrier des disponibilités
-   * CDC section 3.1.3 - Visualisation mensuelle et hebdomadaire
-   */
   getCalendrier = async (req: Request, res: Response) => {
     try {
       const { mois, annee } = req.query;
@@ -268,7 +246,7 @@ export class ChambresController {
 
       const reservations = await Reservation.findAll({
         where: {
-          statut: { [Op.notIn]: ['ANNULEE', 'NO_SHOW'] },
+          statut: { [Op.in]: ['CONFIRMEE', 'EN_ATTENTE_ACOMPTE'] },
           dateDepart: { [Op.gte]: startDate },
           dateArrivee: { [Op.lte]: endDate }
         },
@@ -286,8 +264,8 @@ export class ChambresController {
         const jours = [];
         for (let d = new Date(startDate); d <= endDate; d.setDate(d.getDate() + 1)) {
           const dateStr = d.toISOString().split('T')[0];
-          
-          const hasReservation = reservations.some(r => 
+
+          const hasReservation = reservations.some(r =>
             r.chambreId === chambre.id &&
             r.dateArrivee <= d &&
             r.dateDepart > d
@@ -299,7 +277,7 @@ export class ChambresController {
             b.dateFin >= d
           );
 
-          const reservation = reservations.find(r => 
+          const reservation = reservations.find(r =>
             r.chambreId === chambre.id &&
             r.dateArrivee <= d &&
             r.dateDepart > d
@@ -347,10 +325,6 @@ export class ChambresController {
     }
   };
 
-  /**
-   * ✅ Récupérer tous les blocages pour une période donnée
-   * GET /api/chambres/blockages?dateDebut=YYYY-MM-DD&dateFin=YYYY-MM-DD
-   */
   getBlockages = async (req: Request, res: Response) => {
     try {
       const { dateDebut, dateFin } = req.query;
@@ -396,10 +370,6 @@ export class ChambresController {
     }
   };
 
-  /**
-   * Récupérer une chambre par ID
-   * CDC section 3.1.1
-   */
   getById = async (req: Request, res: Response) => {
     try {
       const { id } = req.params;
@@ -445,10 +415,6 @@ export class ChambresController {
     }
   };
 
-  /**
-   * Créer une chambre (Gérante uniquement)
-   * CDC section 3.1.1
-   */
   create = async (req: Request, res: Response) => {
     try {
       const chambre = await Room.create(req.body);
@@ -477,10 +443,6 @@ export class ChambresController {
     }
   };
 
-  /**
-   * Mettre à jour une chambre (Gérante uniquement)
-   * CDC section 3.1.1
-   */
   update = async (req: Request, res: Response) => {
     try {
       const { id } = req.params;
@@ -520,10 +482,6 @@ export class ChambresController {
     }
   };
 
-  /**
-   * Supprimer une chambre (Gérante uniquement)
-   * CDC section 3.1.1
-   */
   delete = async (req: Request, res: Response) => {
     try {
       const { id } = req.params;
@@ -552,10 +510,6 @@ export class ChambresController {
     }
   };
 
-  /**
-   * Mettre à jour le statut d'une chambre
-   * CDC section 3.1.1 - Gestion des statuts
-   */
   updateStatut = async (req: Request, res: Response) => {
     try {
       const { id } = req.params;
@@ -577,7 +531,15 @@ export class ChambresController {
         });
       }
 
+      const oldStatut = chambre.statut;
       await chambre.update({ statut });
+
+      console.log(`🔧 [updateStatut] Chambre ${id}: ${oldStatut} → ${statut}`);
+
+      const wsManager = (req as any).wsManager as WebSocketManager;
+      if (wsManager) {
+        wsManager.emitChambreStatusChanged(parseInt(id), oldStatut, statut);
+      }
 
       return res.status(200).json({
         success: true,
@@ -594,10 +556,6 @@ export class ChambresController {
     }
   };
 
-  /**
-   * Bloquer des dates pour une chambre
-   * CDC section 3.1.3 - Blocage manuel de dates
-   */
   bloquerDates = async (req: Request, res: Response) => {
     try {
       const { id } = req.params;
@@ -615,7 +573,7 @@ export class ChambresController {
       const conflictingReservations = await Reservation.count({
         where: {
           chambreId: parseInt(id),
-          statut: { [Op.notIn]: ['ANNULEE', 'NO_SHOW'] },
+          statut: { [Op.in]: ['CONFIRMEE', 'EN_ATTENTE_ACOMPTE'] },
           [Op.or]: [
             {
               dateArrivee: { [Op.lt]: new Date(dateFin) },
@@ -641,6 +599,27 @@ export class ChambresController {
         creePar: userId
       });
 
+      const wsManager = (req as any).wsManager as WebSocketManager;
+      if (wsManager) {
+        wsManager.broadcastToAll({
+          type: 'CHAMBRE_BLOCKED',
+          data: {
+            chambreId: parseInt(id),
+            dateDebut,
+            dateFin,
+            motif,
+            type
+          },
+          timestamp: new Date().toISOString()
+        });
+
+        wsManager.broadcastToAll({
+          type: 'REFRESH_CHAMBRES',
+          data: { reason: 'chambre_blocked', timestamp: new Date().toISOString() },
+          timestamp: new Date().toISOString()
+        });
+      }
+
       return res.status(201).json({
         success: true,
         message: 'Dates bloquées avec succès',
@@ -656,10 +635,6 @@ export class ChambresController {
     }
   };
 
-  /**
-   * Débloquer des dates
-   * CDC section 3.1.3
-   */
   debloquerDates = async (req: Request, res: Response) => {
     try {
       const { id, blocageId } = req.params;
@@ -677,6 +652,24 @@ export class ChambresController {
 
       await blocage.destroy();
 
+      const wsManager = (req as any).wsManager as WebSocketManager;
+      if (wsManager) {
+        wsManager.broadcastToAll({
+          type: 'CHAMBRE_UNBLOCKED',
+          data: {
+            chambreId: parseInt(id),
+            blocageId: parseInt(blocageId as string)
+          },
+          timestamp: new Date().toISOString()
+        });
+
+        wsManager.broadcastToAll({
+          type: 'REFRESH_CHAMBRES',
+          data: { reason: 'chambre_unblocked', timestamp: new Date().toISOString() },
+          timestamp: new Date().toISOString()
+        });
+      }
+
       return res.status(200).json({
         success: true,
         message: 'Dates débloquées avec succès'
@@ -691,14 +684,10 @@ export class ChambresController {
     }
   };
 
-  /**
-   * Récupérer les tarifs d'une chambre
-   * CDC section 3.1.2
-   */
   getTarifs = async (req: Request, res: Response) => {
     try {
       const { id } = req.params;
-      
+
       const tarifs = await Tariff.findAll({
         where: { chambreId: id },
         order: [
@@ -706,12 +695,12 @@ export class ChambresController {
           ['dateApplication', 'DESC']
         ]
       });
-      
+
       return res.status(200).json({
         success: true,
         data: tarifs
       });
-      
+
     } catch (error) {
       console.error('Erreur getTarifs:', error);
       return res.status(500).json({
@@ -721,16 +710,12 @@ export class ChambresController {
     }
   };
 
-  /**
-   * Mettre à jour les tarifs d'une chambre
-   * CDC section 3.1.2 - RG7: toute modification de tarif est historisée
-   */
   updateTarifs = async (req: Request, res: Response) => {
     try {
       const { id } = req.params;
       const { tarifs } = req.body;
       const userId = (req as any).user?.id;
-      
+
       const chambre = await Room.findByPk(id);
       if (!chambre) {
         return res.status(404).json({
@@ -738,9 +723,9 @@ export class ChambresController {
           message: 'Chambre non trouvée'
         });
       }
-      
+
       await Tariff.destroy({ where: { chambreId: id } });
-      
+
       const saisonMap: Record<string, string> = {
         'BASSE_SAISON': 'BASSE',
         'MOYENNE_SAISON': 'MOYENNE',
@@ -749,11 +734,11 @@ export class ChambresController {
         'MOYENNE': 'MOYENNE',
         'HAUTE': 'HAUTE'
       };
-      
+
       const newTarifs = await Promise.all(
         tarifs.map(async (t: any) => {
           const saisonValue = saisonMap[t.saison] || t.saison;
-          
+
           return await Tariff.create({
             chambreId: parseInt(id),
             saison: saisonValue,
@@ -769,13 +754,13 @@ export class ChambresController {
           });
         })
       );
-      
+
       return res.status(200).json({
         success: true,
         message: 'Tarifs mis à jour avec succès',
         data: newTarifs
       });
-      
+
     } catch (error) {
       console.error('Erreur updateTarifs:', error);
       return res.status(500).json({
@@ -785,14 +770,10 @@ export class ChambresController {
     }
   };
 
-  /**
-   * Récupérer l'historique des modifications d'une chambre (RG7)
-   * CDC section 3.1.2 - Historique des modifications de tarifs
-   */
   getHistorique = async (req: Request, res: Response) => {
     try {
       const { id } = req.params;
-      
+
       const historique = await Tariff.findAll({
         where: { chambreId: id },
         include: [
@@ -805,12 +786,12 @@ export class ChambresController {
         order: [['updatedAt', 'DESC']],
         limit: 20
       });
-      
+
       return res.status(200).json({
         success: true,
         data: historique
       });
-      
+
     } catch (error) {
       console.error('Erreur getHistorique:', error);
       return res.status(500).json({
@@ -820,14 +801,10 @@ export class ChambresController {
     }
   };
 
-  /**
-   * Récupérer les réservations futures par chambre
-   * CDC section 3.1.3 - Consultation des réservations futures par chambre
-   */
   getReservationsFutures = async (req: Request, res: Response) => {
     try {
       const { id } = req.params;
-      
+
       const reservations = await Reservation.findAll({
         where: {
           chambreId: id,
@@ -843,12 +820,12 @@ export class ChambresController {
         ],
         order: [['dateArrivee', 'ASC']]
       });
-      
+
       return res.status(200).json({
         success: true,
         data: reservations
       });
-      
+
     } catch (error) {
       console.error('Erreur getReservationsFutures:', error);
       return res.status(500).json({
@@ -858,10 +835,6 @@ export class ChambresController {
     }
   };
 
-  /**
-   * Récupérer les arrivées et départs du jour
-   * CDC section 3.1.3 - Indication visuelle des arrivées et départs du jour
-   */
   getArriveesDepartsJour = async (req: Request, res: Response) => {
     try {
       const today = new Date();
@@ -871,7 +844,7 @@ export class ChambresController {
 
       const reservations = await Reservation.findAll({
         where: {
-          statut: { [Op.notIn]: ['ANNULEE', 'NO_SHOW'] },
+          statut: { [Op.in]: ['CONFIRMEE', 'EN_ATTENTE_ACOMPTE'] },
           [Op.or]: [
             {
               dateArrivee: { [Op.gte]: today, [Op.lt]: tomorrow }
@@ -896,11 +869,11 @@ export class ChambresController {
         order: [['dateArrivee', 'ASC']]
       });
 
-      const arrivees = reservations.filter(r => 
+      const arrivees = reservations.filter(r =>
         r.dateArrivee >= today && r.dateArrivee < tomorrow
       );
 
-      const departs = reservations.filter(r => 
+      const departs = reservations.filter(r =>
         r.dateDepart >= today && r.dateDepart < tomorrow
       );
 
@@ -924,15 +897,13 @@ export class ChambresController {
     }
   };
 
-  /**
-   * Récupérer les chambres avec leurs occupations calculées en temps réel
-   * API unifiée pour le frontend - Élimine les appels séparés
-   */
   getChambresAvecOccupation = async (req: Request, res: Response) => {
     try {
       const today = new Date();
       today.setHours(0, 0, 0, 0);
-      
+
+      console.log('📊 [getChambresAvecOccupation] Début du calcul —', today.toISOString());
+
       const chambres = await Room.findAll({
         include: [
           {
@@ -948,6 +919,8 @@ export class ChambresController {
         ],
         order: [['numero', 'ASC']]
       });
+
+      console.log(`📊 [getChambresAvecOccupation] ${chambres.length} chambre(s) trouvée(s)`);
 
       const reservationsActives = await Reservation.findAll({
         where: {
@@ -969,6 +942,8 @@ export class ChambresController {
         order: [['dateArrivee', 'ASC']]
       });
 
+      console.log(`📊 [getChambresAvecOccupation] ${reservationsActives.length} réservation(s) active(s) trouvée(s)`);
+
       const blocagesActifs = await RoomBlock.findAll({
         where: {
           dateFin: { [Op.gte]: today }
@@ -981,15 +956,16 @@ export class ChambresController {
         occupees: 0,
         maintenance: 0,
         bloques: 0,
-        tauxOccupationGlobal: 0
+        tauxOccupationGlobal: 0,
+        revenusMois: 0
       };
 
       const formattedChambres = await Promise.all(chambres.map(async chambre => {
         const chambreJson = chambre.toJSON();
-        
+
         const chambreReservations = reservationsActives.filter(r => r.chambreId === chambre.id);
         const statutAffichage = await this.calculerStatutAffichage(chambre, chambreReservations);
-        
+
         const reservationEnCours = chambreReservations.find(r => {
           const arrivee = new Date(r.dateArrivee);
           const depart = new Date(r.dateDepart);
@@ -1047,13 +1023,13 @@ export class ChambresController {
           while (joursDisponiblesConsecutifs < 30) {
             const testFin = new Date(dateTest);
             testFin.setDate(testFin.getDate() + 1);
-            
+
             const estDispo = !chambreReservations.some(r => {
               const a = new Date(r.dateArrivee);
               const d = new Date(r.dateDepart);
               return dateTest < d && a < testFin;
             });
-            
+
             if (!estDispo) break;
             joursDisponiblesConsecutifs++;
             dateTest = testFin;
@@ -1108,8 +1084,25 @@ export class ChambresController {
           return sum + Math.ceil((d.getTime() - a.getTime()) / (1000 * 60 * 60 * 24));
         }, 0);
       }, 0);
-      
+
       stats.tauxOccupationGlobal = Math.round((totalNuits / (chambres.length * 30)) * 100);
+
+      const startOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
+      const endOfMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0, 23, 59, 59, 999);
+
+      const reservationsDuMois = await Reservation.findAll({
+        where: {
+          statut: { [Op.notIn]: ['ANNULEE'] },
+          dateArrivee: { [Op.gte]: startOfMonth, [Op.lte]: endOfMonth }
+        },
+        attributes: ['id', 'montantTotal', 'dateArrivee', 'statut']
+      });
+
+      stats.revenusMois = Math.round(
+        reservationsDuMois.reduce((sum, r) => sum + (Number(r.montantTotal) || 0), 0) * 100
+      ) / 100;
+
+      console.log(`💰 [getChambresAvecOccupation] Revenus du mois: ${stats.revenusMois}€`);
 
       const prochainesArrivees = reservationsActives
         .filter(r => {
@@ -1141,18 +1134,21 @@ export class ChambresController {
           dateDepart: r.dateDepart
         }));
 
+      const reservationsActuellesGlobal = reservationsActives.map(r => ({
+        id: r.id,
+        chambreId: r.chambreId,
+        dateArrivee: r.dateArrivee,
+        dateDepart: r.dateDepart,
+        statut: r.statut,
+        client_nom: r.client?.nom || '',
+        client_prenom: r.client?.prenom || ''
+      }));
+
       return res.status(200).json({
         success: true,
         data: {
           chambres: formattedChambres,
-          reservationsActuelles: reservationsActives.map(r => ({
-            id: r.id,
-            dateArrivee: r.dateArrivee,
-            dateDepart: r.dateDepart,
-            statut: r.statut,
-            client_nom: r.client?.nom || '',
-            client_prenom: r.client?.prenom || ''
-          })),
+          reservationsActuelles: reservationsActuellesGlobal,
           statistiques: stats,
           prochainesArrivees,
           prochainsDeparts
@@ -1160,7 +1156,7 @@ export class ChambresController {
       });
 
     } catch (error) {
-      console.error('Erreur getChambresAvecOccupation:', error);
+      console.error('❌ Erreur getChambresAvecOccupation:', error);
       return res.status(500).json({
         success: false,
         message: 'Erreur lors de la récupération des chambres avec occupation'

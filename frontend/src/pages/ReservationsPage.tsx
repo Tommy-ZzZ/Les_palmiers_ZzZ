@@ -12,6 +12,7 @@ import {
   Bike, Plane, Wifi, Coffee, Wind, Snowflake, Tv
 } from 'lucide-react';
 import { reservationService } from '../services/api';
+import { useWebSocketContext } from '../context/WebSocketContext';
 
 // ============================================
 // TYPES
@@ -117,15 +118,6 @@ interface Reservation {
   chambresChoisies?: Chambre[];
   services: ServiceAnnexe[];
   paiements: Paiement[];
-}
-
-interface Alerte {
-  id: number;
-  type: string;
-  message: string;
-  niveauUrgence: 'INFO' | 'WARNING' | 'CRITICAL';
-  lue: boolean;
-  dateHeure: string;
 }
 
 // ============================================
@@ -574,7 +566,6 @@ const FactureModal = ({
             </div>
           )}
 
-          {/* ✅ Équipements de la chambre */}
           {reservation.chambre?.equipements && reservation.chambre.equipements.length > 0 && (
             <div className="bg-slate-50 rounded-xl p-3 border border-slate-200">
               <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">Équipements de la chambre</p>
@@ -658,6 +649,9 @@ export default function ReservationsPage() {
     label: string;
     montantPenalite?: number;
   } | null>(null);
+
+  // ✅ WebSocket
+  const { isConnected, refreshChambres } = useWebSocketContext();
 
   // ============================================
   // TRANSFORMER UNE RÉSERVATION
@@ -787,56 +781,6 @@ export default function ReservationsPage() {
   }, [search, statut]);
 
   // ============================================
-  // ALERTES
-  // ============================================
-  
-  const generateAlertes = useCallback((reservationsList: Reservation[]): Alerte[] => {
-    const alertes: Alerte[] = [];
-    const now = new Date();
-
-    reservationsList.forEach(r => {
-      const arrivee = new Date(r.dateArrivee);
-      const daysToArrival = Math.ceil((arrivee.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
-      const hoursSinceCreation = (now.getTime() - new Date(r.dateCreation).getTime()) / (1000 * 60 * 60);
-
-      if (r.statut === 'EN_ATTENTE_ACOMPTE' && daysToArrival <= 2 && daysToArrival >= 0) {
-        alertes.push({
-          id: alertes.length + 1,
-          type: 'ACOMPTE_NON_RECU',
-          message: `Acompte non reçu pour ${r.client_prenom} ${r.client_nom} - arrivée dans ${daysToArrival} jour${daysToArrival > 1 ? 's' : ''}`,
-          niveauUrgence: 'CRITICAL',
-          lue: false,
-          dateHeure: new Date().toISOString()
-        });
-      }
-
-      if (r.statut === 'EN_ATTENTE_ACOMPTE' && hoursSinceCreation > 24) {
-        alertes.push({
-          id: alertes.length + 1,
-          type: 'ATTENTE_LONGUE',
-          message: `Réservation ${r.numeroReservation} en attente depuis plus de 24h (${r.client_prenom} ${r.client_nom})`,
-          niveauUrgence: 'WARNING',
-          lue: false,
-          dateHeure: new Date().toISOString()
-        });
-      }
-
-      if (toNumber(r.montantRestantDu) > 0 && (r.statut === 'CONFIRMEE' || r.statut === 'EN_ATTENTE_ACOMPTE')) {
-        alertes.push({
-          id: alertes.length + 1,
-          type: 'IMPAYE',
-          message: `Paiement restant dû pour ${r.client_prenom} ${r.client_nom}: ${safeFormat(r.montantRestantDu, 2)}€`,
-          niveauUrgence: 'WARNING',
-          lue: false,
-          dateHeure: new Date().toISOString()
-        });
-      }
-    });
-
-    return alertes;
-  }, []);
-
-  // ============================================
   // STATUTS
   // ============================================
   
@@ -886,7 +830,7 @@ export default function ReservationsPage() {
   };
 
   // ============================================
-  // ACTIONS
+  // ACTIONS AVEC WEBSOCKET
   // ============================================
 
   const handleConfirmReservation = async (id: number) => {
@@ -895,6 +839,10 @@ export default function ReservationsPage() {
       if (response?.success) {
         toast.success('✅ Réservation confirmée avec succès');
         loadReservations();
+        
+        // 🔔 RAFRAÎCHIR LES CHAMBRES VIA WEBSOCKET
+        refreshChambres();
+        try { localStorage.removeItem('chambres_cache'); } catch (e) { /* ignore */ }
       } else {
         toast.error(response?.message || 'Erreur lors de la confirmation');
       }
@@ -918,6 +866,10 @@ export default function ReservationsPage() {
           toast.success('❌ Réservation annulée (gratuit)');
         }
         loadReservations();
+        
+        // 🔔 RAFRAÎCHIR LES CHAMBRES VIA WEBSOCKET
+        refreshChambres();
+        try { localStorage.removeItem('chambres_cache'); } catch (e) { /* ignore */ }
       } else {
         toast.error(response?.message || 'Erreur lors de l\'annulation');
       }
@@ -933,6 +885,10 @@ export default function ReservationsPage() {
       if (response?.success) {
         toast.success('🗑️ Réservation supprimée définitivement');
         loadReservations();
+        
+        // 🔔 RAFRAÎCHIR LES CHAMBRES VIA WEBSOCKET
+        refreshChambres();
+        try { localStorage.removeItem('chambres_cache'); } catch (e) { /* ignore */ }
       } else {
         toast.error(response?.message || 'Erreur lors de la suppression');
       }
@@ -991,10 +947,6 @@ export default function ReservationsPage() {
     });
   };
 
-  const exportData = () => {
-    toast.success('📥 Export des données effectué');
-  };
-
   // ============================================
   // STATISTIQUES
   // ============================================
@@ -1006,8 +958,7 @@ export default function ReservationsPage() {
     termines: reservations.filter(r => r.statut === 'TERMINEE').length,
     annules: reservations.filter(r => r.statut === 'ANNULEE').length,
     noShow: reservations.filter(r => r.statut === 'NO_SHOW').length,
-    montantTotal: reservations.reduce((sum, r) => sum + toNumber(r.montantTotal), 0),
-    alertes: generateAlertes(reservations)
+    montantTotal: reservations.reduce((sum, r) => sum + toNumber(r.montantTotal), 0)
   };
 
   // ============================================
@@ -1019,6 +970,24 @@ export default function ReservationsPage() {
   }, [loadReservations]);
 
   // ============================================
+  // GESTIONNAIRES D'OUVERTURE DE MODALES
+  // ============================================
+
+  const openDetails = (reservation: Reservation) => {
+    setSelectedReservation(reservation);
+    setShowDetails(true);
+  };
+
+  const openFacture = (reservation: Reservation) => {
+    setSelectedReservation(reservation);
+    setShowFacture(true);
+  };
+
+  const closeFacture = () => {
+    setShowFacture(false);
+  };
+
+  // ============================================
   // RENDU
   // ============================================
 
@@ -1027,7 +996,7 @@ export default function ReservationsPage() {
 
   return (
     <div className="space-y-5 p-4 lg:p-6">
-      {/* En-tête */}
+      {/* En-tête avec indicateur WebSocket */}
       <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
@@ -1043,19 +1012,13 @@ export default function ReservationsPage() {
             {stats.annules > 0 && <span className="flex items-center gap-1"><XCircle size={14} className="text-rose-600" /> {stats.annules} annulée{stats.annules !== 1 ? 's' : ''}</span>}
             {stats.noShow > 0 && <span className="flex items-center gap-1"><AlertCircle size={14} className="text-rose-600" /> {stats.noShow} no-show</span>}
             <span className="flex items-center gap-1 text-emerald-700 font-medium"><Euro size={14} /> {safeFormat(stats.montantTotal, 0)}€</span>
+            <span className="flex items-center gap-1 text-xs">
+              <span className={`inline-block w-2 h-2 rounded-full ${isConnected ? 'bg-emerald-500 animate-pulse' : 'bg-red-500'}`} />
+              <span className="text-gray-400">{isConnected ? '🔗 Temps réel' : '📡 Hors ligne'}</span>
+            </span>
           </p>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
-          {stats.alertes.filter(a => !a.lue).length > 0 && (
-            <div className="flex items-center gap-1.5 px-3 py-1.5 bg-rose-50 border border-rose-300 rounded-xl text-rose-700 text-sm animate-pulse-slow">
-              <AlertCircle size={16} className="text-rose-600" />
-              <span className="font-medium">{stats.alertes.filter(a => !a.lue).length}</span>
-              <span>alerte{stats.alertes.filter(a => !a.lue).length > 1 ? 's' : ''}</span>
-            </div>
-          )}
-          <button onClick={exportData} className="flex items-center gap-2 px-4 py-2 border border-gray-300 rounded-xl hover:bg-gray-50 transition-all duration-200 text-sm font-medium text-gray-700 hover:scale-[1.02]">
-            <Download size={16} className="text-emerald-600" /> Exporter
-          </button>
           <button onClick={() => navigate('/reservations/nouvelle')} className="flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white rounded-xl hover:bg-emerald-700 transition-all duration-200 text-sm font-medium shadow-lg hover:scale-[1.02]">
             <Plus size={16} /> Nouvelle réservation
           </button>
@@ -1148,7 +1111,7 @@ export default function ReservationsPage() {
               </thead>
               <tbody className="divide-y divide-gray-100">
                 {reservations.map((r) => (
-                  <tr key={r.id} className="hover:bg-gray-50/60 transition-colors cursor-pointer group" onClick={() => { setSelectedReservation(r); setShowDetails(true); }}>
+                  <tr key={r.id} className="hover:bg-gray-50/60 transition-colors cursor-pointer group" onClick={() => openDetails(r)}>
                     <td className="px-4 py-3"><span className="font-mono text-xs font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-lg">{r.numeroReservation}</span></td>
                     <td className="px-4 py-3">
                       <div className="font-medium text-gray-900 flex items-center gap-1.5">
@@ -1204,7 +1167,14 @@ export default function ReservationsPage() {
                             <Trash2 size={16} className="text-rose-700" />
                           </button>
                         )}
-                        <button onClick={(e) => { e.stopPropagation(); setSelectedReservation(r); setShowFacture(true); }} className="p-1.5 bg-sky-100 hover:bg-sky-200 rounded-lg transition-all duration-200 hover:scale-110" title="Voir la facture">
+                        <button 
+                          onClick={(e) => { 
+                            e.stopPropagation(); 
+                            openFacture(r); 
+                          }} 
+                          className="p-1.5 bg-sky-100 hover:bg-sky-200 rounded-lg transition-all duration-200 hover:scale-110" 
+                          title="Voir la facture"
+                        >
                           <FileText size={16} className="text-sky-700" />
                         </button>
                         <button onClick={(e) => { e.stopPropagation(); navigate(`/reservations/${r.id}`); }} className="p-1.5 bg-violet-100 hover:bg-violet-200 rounded-lg transition-all duration-200 hover:scale-110" title="Voir détails">
@@ -1224,9 +1194,13 @@ export default function ReservationsPage() {
       <ConfirmDialog isOpen={!!confirmAction} title={confirmAction?.action === 'SUPPRIMER' ? '🗑️ Suppression définitive' : confirmAction?.action === 'ANNULEE' ? '❌ Annulation' : '✅ Confirmation'} message={confirmAction?.label ?? ''} onConfirm={handleAction} onCancel={() => setConfirmAction(null)} variant={confirmAction?.action === 'ANNULEE' || confirmAction?.action === 'SUPPRIMER' ? 'danger' : 'default'} />
 
       {/* Facture Modal */}
-      <FactureModal isOpen={showFacture} onClose={() => { setShowFacture(false); setSelectedReservation(null); }} reservation={selectedReservation} />
+      <FactureModal 
+        isOpen={showFacture} 
+        onClose={closeFacture} 
+        reservation={selectedReservation} 
+      />
 
-      {/* Modal Détails Réservation - AVEC CHAMBRE COMPLÈTE */}
+      {/* Modal Détails Réservation */}
       {showDetails && selectedReservation && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-fadeIn">
           <div className="bg-white rounded-2xl shadow-2xl max-w-4xl w-full max-h-[90vh] overflow-y-auto">
@@ -1260,7 +1234,7 @@ export default function ReservationsPage() {
                 </div>
               </div>
 
-              {/* ✅ CHAMBRE - DÉTAILS COMPLETS AVEC ÉQUIPEMENTS */}
+              {/* CHAMBRE - DÉTAILS COMPLETS */}
               <div className="bg-emerald-50 rounded-xl p-4 border border-emerald-200">
                 <h4 className="text-sm font-semibold text-emerald-800 flex items-center gap-2 mb-3">
                   <Building size={16} className="text-emerald-600" />
@@ -1509,7 +1483,15 @@ export default function ReservationsPage() {
               <button onClick={() => { setShowDetails(false); setSelectedReservation(null); }} className="px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100 rounded-xl border border-gray-300 transition-all duration-200">
                 Fermer
               </button>
-              <button onClick={() => { setSelectedReservation(selectedReservation); setShowFacture(true); }} className="px-4 py-2 text-sm font-medium text-white bg-sky-600 hover:bg-sky-700 rounded-xl flex items-center gap-2 transition-all duration-200 hover:scale-[1.02] shadow-lg">
+              <button 
+                onClick={() => { 
+                  setShowDetails(false); 
+                  setTimeout(() => {
+                    openFacture(selectedReservation);
+                  }, 100);
+                }} 
+                className="px-4 py-2 text-sm font-medium text-white bg-sky-600 hover:bg-sky-700 rounded-xl flex items-center gap-2 transition-all duration-200 hover:scale-[1.02] shadow-lg"
+              >
                 <FileText size={16} /> Facture
               </button>
               <button onClick={() => { navigate(`/reservations/${selectedReservation.id}`); }} className="px-4 py-2 text-sm font-medium text-white bg-emerald-600 hover:bg-emerald-700 rounded-xl flex items-center gap-2 transition-all duration-200 hover:scale-[1.02] shadow-lg">

@@ -1,5 +1,4 @@
-// E:\Projets\les-palmiers\backend\src\models\Reservation.ts
-
+// backend/src/models/Reservation.ts
 import { DataTypes, Model, Optional } from 'sequelize';
 import { sequelize } from '../config/database';
 
@@ -49,9 +48,12 @@ export interface ReservationAttributes {
   nbVelos?: number;
   groupe?: boolean;
   canalAcquisition?: string;
+  typeAcompte: number;
+  // ✅ CHAMP VIRTUEL - OPTIONNEL (non stocké en base)
+  montantRestantDu?: number;
 }
 
-export interface ReservationCreationAttributes extends Optional<ReservationAttributes, 'id' | 'numero' | 'dateCreation' | 'montantPenalite' | 'dateModification'> {}
+export interface ReservationCreationAttributes extends Optional<ReservationAttributes, 'id' | 'numero' | 'dateCreation' | 'montantPenalite' | 'dateModification' | 'typeAcompte'> {}
 
 export class Reservation extends Model<ReservationAttributes, ReservationCreationAttributes> implements ReservationAttributes {
   public id!: number;
@@ -83,6 +85,15 @@ export class Reservation extends Model<ReservationAttributes, ReservationCreatio
   public nbVelos?: number;
   public groupe?: boolean;
   public canalAcquisition?: string;
+  public typeAcompte!: number;
+  public montantRestantDu?: number;
+
+  // ✅ Getter pour la valeur virtuelle
+  public getMontantRestantDu(): number {
+    const total = Number(this.montantTotal) || 0;
+    const acompte = Number(this.montantAcompte) || 0;
+    return Math.round((total - acompte) * 100) / 100;
+  }
 }
 
 Reservation.init(
@@ -239,6 +250,13 @@ Reservation.init(
       type: DataTypes.STRING(50),
       allowNull: true,
       field: 'canal_acquisition'
+    },
+    typeAcompte: {
+      type: DataTypes.INTEGER,
+      allowNull: false,
+      defaultValue: 30,
+      field: 'type_acompte',
+      comment: 'Pourcentage d\'acompte choisi par le client (30, 50, 100)'
     }
   },
   {

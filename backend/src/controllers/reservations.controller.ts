@@ -18,15 +18,13 @@ import { ModePenalite } from '../models/Cancellation';
 import { TarifService } from '../services/tarif.service';
 import { AuditService } from '../services/audit.service';
 import { EmailService } from '../services/email.service';
+import { WebSocketManager } from '../websocket/server';
 
 export class ReservationsController {
   private tarifService = new TarifService();
   private auditService = new AuditService();
   private emailService = new EmailService();
 
-  /**
-   * Synchroniser le statut d'une chambre selon les réservations actives du jour
-   */
   private async synchroniserStatutChambre(chambreId: number) {
     const chambre = await Room.findByPk(chambreId);
     if (!chambre) return;
@@ -45,7 +43,7 @@ export class ReservationsController {
     const reservationActive = await Reservation.count({
       where: {
         chambreId,
-        statut: { [Op.notIn]: ['ANNULEE', 'NO_SHOW'] },
+        statut: { [Op.in]: ['CONFIRMEE', 'EN_ATTENTE_ACOMPTE'] },
         dateArrivee: { [Op.lte]: today },
         dateDepart: { [Op.gt]: today }
       }
@@ -57,9 +55,6 @@ export class ReservationsController {
     }
   }
 
-  /**
-   * GET /api/reservations - Récupérer toutes les réservations
-   */
   getAll = async (req: Request, res: Response) => {
     try {
       const { statut, dateDebut, dateFin, search } = req.query;
@@ -93,7 +88,6 @@ export class ReservationsController {
         order: [['dateArrivee', 'ASC']]
       });
 
-      // Formatage pour le frontend
       const formattedData = reservations.map(r => ({
         id: r.id,
         numero: r.numero,
@@ -109,6 +103,7 @@ export class ReservationsController {
         montantAcompte: r.montantAcompte || 0,
         montantSolde: r.montantSolde || 0,
         montantRestantDu: r.montantRestantDu || 0,
+        typeAcompte: r.typeAcompte || 30,
         demandeSpeciale: r.demandesSpeciales,
         heureArriveePrevisionnelle: r.horaireArriveeTardive,
         litBebe: r.litBebe || false,
@@ -143,9 +138,6 @@ export class ReservationsController {
     }
   };
 
-  /**
-   * GET /api/reservations/arrivees-jour - Arrivées du jour (CDC 3.1.3)
-   */
   getArriveesJour = async (req: Request, res: Response) => {
     try {
       const today = new Date();
@@ -186,9 +178,6 @@ export class ReservationsController {
     }
   };
 
-  /**
-   * GET /api/reservations/departs-jour - Départs du jour (CDC 3.1.3)
-   */
   getDepartsJour = async (req: Request, res: Response) => {
     try {
       const today = new Date();
@@ -219,9 +208,6 @@ export class ReservationsController {
     }
   };
 
-  /**
-   * GET /api/reservations/prochains-7-jours - Réservations 7 prochains jours (CDC 3.2.3)
-   */
   getProchains7Jours = async (req: Request, res: Response) => {
     try {
       const today = new Date();
@@ -255,9 +241,6 @@ export class ReservationsController {
     }
   };
 
-  /**
-   * GET /api/reservations/:id - Récupérer une réservation par ID
-   */
   getById = async (req: Request, res: Response) => {
     try {
       const { id } = req.params;
@@ -284,7 +267,6 @@ export class ReservationsController {
         });
       }
 
-      // Formatage pour le frontend
       const formattedData = {
         id: reservation.id,
         numero: reservation.numero,
@@ -300,6 +282,7 @@ export class ReservationsController {
         montantAcompte: reservation.montantAcompte || 0,
         montantSolde: reservation.montantSolde || 0,
         montantRestantDu: reservation.montantRestantDu || 0,
+        typeAcompte: reservation.typeAcompte || 30,
         demandeSpeciale: reservation.demandesSpeciales,
         heureArriveePrevisionnelle: reservation.horaireArriveeTardive,
         litBebe: reservation.litBebe || false,
@@ -328,9 +311,6 @@ export class ReservationsController {
     }
   };
 
-  /**
-   * POST /api/reservations/calculer - Calculer le tarif (CDC 3.2.1)
-   */
   calculer = async (req: Request, res: Response) => {
     try {
       console.log('📥 calculer - Body reçu:', req.body);
@@ -459,9 +439,6 @@ export class ReservationsController {
     }
   };
 
-  /**
-   * POST /api/reservations - Créer une réservation (CDC 3.2.1)
-   */
   create = async (req: Request, res: Response) => {
     try {
       console.log('📥 Création réservation - Body:', req.body);
@@ -470,13 +447,13 @@ export class ReservationsController {
         clientId, chambreId, dateArrivee, dateDepart, nbAdultes, nbEnfants,
         agesEnfants, demandesSpeciales, horaireArriveeTardive, litBebe,
         petitDejeunerInclus, codePromo, canalAcquisition, commentaire,
-        groupe, nbVelos,
+        groupe, nbVelos, typeAcompte,
         client_id, chambre_id, date_arrivee, date_depart, nb_adultes, nb_enfants,
         ages_enfants, demandes_speciales, horaire_arrivee_tardive, lit_bebe,
-        petit_dejeuner_inclus, code_promo, canal_acquisition, nb_velos
+        petit_dejeuner_inclus, code_promo, canal_acquisition, nb_velos,
+        type_acompte
       } = req.body;
 
-      // Normalisation
       const finalClientId = clientId || client_id;
       const finalChambreId = chambreId || chambre_id;
       const finalDateArrivee = dateArrivee || date_arrivee;
@@ -493,10 +470,10 @@ export class ReservationsController {
       const finalCommentaire = commentaire || '';
       const finalGroupe = groupe || false;
       const finalNbVelos = parseInt(nbVelos || nb_velos || 0);
+      const finalTypeAcompte = parseInt(typeAcompte || type_acompte || 30);
 
       const userId = (req as any).user?.id;
 
-      // Validations
       if (!finalClientId || !finalChambreId || !finalDateArrivee || !finalDateDepart) {
         return res.status(400).json({
           success: false,
@@ -520,7 +497,6 @@ export class ReservationsController {
         });
       }
 
-      // Vérification des disponibilités (RG1)
       const existingReservation = await Reservation.findOne({
         where: {
           chambreId: finalChambreId,
@@ -541,7 +517,6 @@ export class ReservationsController {
         });
       }
 
-      // Calcul du tarif (RG2)
       const resultat = await this.tarifService.calculerTarif(
         finalChambreId,
         finalDateArrivee,
@@ -556,7 +531,6 @@ export class ReservationsController {
       const supplementVelos = finalNbVelos * 10 * nbNuits;
       montantTotal += supplementVelos;
 
-      // Code promo
       let codePromoId: number | undefined = undefined;
       let reductionPromo = 0;
 
@@ -578,12 +552,22 @@ export class ReservationsController {
         }
       }
 
-      const montantAcompte = montantTotal * 0.3;
+      const pourcentageAcompte = Math.min(Math.max(finalTypeAcompte || 30, 0), 100);
+      const montantAcompte = montantTotal * (pourcentageAcompte / 100);
+      const montantSolde = montantTotal - montantAcompte;
+
+      const statutInitial = pourcentageAcompte >= 100 
+        ? StatutReservation.CONFIRMEE 
+        : StatutReservation.EN_ATTENTE_ACOMPTE;
+
+      const statutPaiementInitial = pourcentageAcompte >= 100 
+        ? StatutPaiement.SOLDE_COMPLET 
+        : (pourcentageAcompte > 0 ? StatutPaiement.ACOMPTE_RECU : StatutPaiement.ACOMPTE_EN_ATTENTE);
+
       const year = new Date().getFullYear();
       const count = await Reservation.count() + 1;
       const numero = `RES-${year}-${String(count).padStart(4, '0')}`;
 
-      // Création
       const reservation = await Reservation.create({
         numero,
         clientId: finalClientId,
@@ -599,31 +583,52 @@ export class ReservationsController {
         petitDejeunerInclus: finalPetitDejeunerInclus,
         montantTotal: Math.round(montantTotal * 100) / 100,
         montantAcompte: Math.round(montantAcompte * 100) / 100,
-        montantSolde: Math.round((montantTotal - montantAcompte) * 100) / 100,
+        montantSolde: Math.round(montantSolde * 100) / 100,
         montantPenalite: 0,
-        statut: StatutReservation.EN_ATTENTE_ACOMPTE,
-        statutPaiement: StatutPaiement.EN_ATTENTE,
+        statut: statutInitial,
+        statutPaiement: statutPaiementInitial,
         creePar: userId,
         notesInternes: finalCommentaire || undefined,
         codePromoId: codePromoId,
         nbVelos: finalNbVelos,
         groupe: finalGroupe,
-        canalAcquisition: finalCanalAcquisition
+        canalAcquisition: finalCanalAcquisition,
+        typeAcompte: pourcentageAcompte
       });
 
       await reservation.reload();
 
-      // Historique
       await ReservationHistory.create({
         reservationId: reservation.id,
         action: 'CREATE',
-        nouvelleValeur: { statut: 'EN_ATTENTE_ACOMPTE', montantTotal },
+        nouvelleValeur: { 
+          statut: statutInitial, 
+          montantTotal,
+          typeAcompte: pourcentageAcompte,
+          montantAcompte: Math.round(montantAcompte * 100) / 100
+        },
         utilisateurId: userId
       });
 
       await this.synchroniserStatutChambre(finalChambreId);
 
-      // Email (RG6)
+      const wsManager = (req as any).wsManager as WebSocketManager;
+      if (wsManager) {
+        const reservationWithClient = await Reservation.findByPk(reservation.id, {
+          include: [
+            { model: Client, as: 'client' },
+            { model: Room, as: 'chambre' }
+          ]
+        });
+        wsManager.emitReservationCreated(reservationWithClient || reservation);
+        
+        wsManager.broadcastToAll({
+          type: 'REFRESH_CHAMBRES',
+          data: { reason: 'reservation_created', timestamp: new Date().toISOString() },
+          timestamp: new Date().toISOString()
+        });
+      }
+
       try {
         await this.emailService.envoyerConfirmation(reservation.id);
       } catch (emailError) {
@@ -647,6 +652,7 @@ export class ReservationsController {
             montantAcompte: reservation.montantAcompte,
             montantSolde: reservation.montantSolde,
             montantRestantDu: reservation.montantRestantDu || 0,
+            typeAcompte: reservation.typeAcompte,
             client_prenom: client.prenom,
             client_nom: client.nom,
             client_email: client.email,
@@ -657,7 +663,8 @@ export class ReservationsController {
           montantAcompte: Math.round(montantAcompte * 100) / 100,
           montantRestant: Math.round((montantTotal - montantAcompte) * 100) / 100,
           reductionPromo: Math.round(reductionPromo * 100) / 100,
-          supplementVelos: Math.round(supplementVelos * 100) / 100
+          supplementVelos: Math.round(supplementVelos * 100) / 100,
+          pourcentageAcompte: pourcentageAcompte
         }
       });
 
@@ -670,9 +677,6 @@ export class ReservationsController {
     }
   };
 
-  /**
-   * PUT /api/reservations/:id - Modifier une réservation (CDC 3.2.2)
-   */
   update = async (req: Request, res: Response) => {
     try {
       const id = parseInt(req.params.id, 10);
@@ -704,7 +708,6 @@ export class ReservationsController {
 
       const ancienneValeur = reservation.toJSON();
 
-      // Mise à jour des dates et recalcul
       if (dateArrivee && dateDepart) {
         const conflict = await Reservation.findOne({
           where: {
@@ -745,7 +748,6 @@ export class ReservationsController {
         reservation.dateDepart = dateDepart;
       }
 
-      // Mise à jour des champs
       if (nbAdultes !== undefined && nbAdultes > 0) reservation.nbAdultes = nbAdultes;
       if (nbEnfants !== undefined && nbEnfants >= 0) reservation.nbEnfants = nbEnfants;
       if (agesEnfants !== undefined && agesEnfants !== '') reservation.agesEnfants = agesEnfants;
@@ -761,7 +763,6 @@ export class ReservationsController {
       reservation.dateModification = new Date();
       await reservation.save();
 
-      // Historique
       await ReservationHistory.create({
         reservationId: reservation.id,
         action: 'UPDATE',
@@ -771,6 +772,18 @@ export class ReservationsController {
       });
 
       await this.synchroniserStatutChambre(reservation.chambreId);
+
+      const wsManager = (req as any).wsManager as WebSocketManager;
+      if (wsManager) {
+        const oldChambreId = ancienneValeur.chambreId;
+        const updatedReservation = await Reservation.findByPk(id, {
+          include: [
+            { model: Client, as: 'client' },
+            { model: Room, as: 'chambre' }
+          ]
+        });
+        wsManager.emitReservationUpdated(updatedReservation || reservation, oldChambreId);
+      }
 
       return res.status(200).json({
         success: true,
@@ -787,9 +800,6 @@ export class ReservationsController {
     }
   };
 
-  /**
-   * DELETE /api/reservations/:id/annuler - Annuler une réservation (RG5)
-   */
   cancel = async (req: Request, res: Response) => {
     try {
       const { id } = req.params;
@@ -814,7 +824,6 @@ export class ReservationsController {
         });
       }
 
-      // Calcul de la pénalité (RG5)
       const today = new Date();
       const arrivee = new Date(reservation.dateArrivee);
       const joursAvantArrivee = Math.ceil((arrivee.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
@@ -861,6 +870,17 @@ export class ReservationsController {
 
       await this.synchroniserStatutChambre(reservation.chambreId);
 
+      const wsManager = (req as any).wsManager as WebSocketManager;
+      if (wsManager) {
+        const cancelledReservation = await Reservation.findByPk(id, {
+          include: [
+            { model: Client, as: 'client' },
+            { model: Room, as: 'chambre' }
+          ]
+        });
+        wsManager.emitReservationCancelled(cancelledReservation || reservation);
+      }
+
       return res.status(200).json({
         success: true,
         message: 'Réservation annulée avec succès',
@@ -881,9 +901,6 @@ export class ReservationsController {
     }
   };
 
-  /**
-   * DELETE /api/reservations/:id/supprimer - Supprimer définitivement
-   */
   supprimer = async (req: Request, res: Response) => {
     try {
       const id = parseInt(req.params.id, 10);
@@ -909,13 +926,17 @@ export class ReservationsController {
       const chambreId = reservation.chambreId;
       const reservationData = reservation.toJSON();
 
-      // Suppression en cascade
       await Payment.destroy({ where: { reservationId: id } });
       await Cancellation.destroy({ where: { reservationId: id } });
       await ReservationHistory.destroy({ where: { reservationId: id } });
 
       await reservation.destroy();
       await this.synchroniserStatutChambre(chambreId);
+
+      const wsManager = (req as any).wsManager as WebSocketManager;
+      if (wsManager) {
+        wsManager.emitReservationDeleted(reservationData);
+      }
 
       return res.status(200).json({
         success: true,
@@ -936,9 +957,6 @@ export class ReservationsController {
     }
   };
 
-  /**
-   * GET /api/reservations/stats/occupation - Statistiques d'occupation (CDC 3.7.1)
-   */
   getStatsOccupation = async (req: Request, res: Response) => {
     try {
       const { mois, annee } = req.query;
@@ -992,9 +1010,6 @@ export class ReservationsController {
     }
   };
 
-  /**
-   * GET /api/reservations/stats/taux-occupation - Taux d'occupation (CDC 3.7.1)
-   */
   getTauxOccupation = async (req: Request, res: Response) => {
     try {
       const { dateDebut, dateFin } = req.query;

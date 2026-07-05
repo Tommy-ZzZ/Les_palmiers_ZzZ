@@ -9,6 +9,11 @@ import Room from '../models/Room';
 const HEURES_ALERTE_ACOMPTE = 48; // RG3 : acompte perçu sous 48h
 const HEURES_ALERTE_CONFIRMATION = 24;
 
+// ✅ Cache pour les notifications déjà affichées (auto-disparition)
+const NOTIFICATION_CACHE = new Map<string, { read: boolean; timestamp: number }>();
+const CACHE_TTL = 30000; // 30 secondes
+const NOTIFICATION_DISPLAY_MS = 50; // 0.05s avant auto-disparition
+
 interface CandidatNotification {
   type: TypeNotification;
   titre: string;
@@ -27,6 +32,31 @@ function dansLesProchainesHeures(date: Date, heures: number): boolean {
 function depuisPlusDe(date: Date, heures: number): boolean {
   const seuil = new Date(Date.now() - heures * 60 * 60 * 1000);
   return date <= seuil;
+}
+
+// ✅ Générer une clé unique pour une notification
+function genererCleUnique(type: TypeNotification, reservationId?: number): string {
+  return `${type}-${reservationId ?? 'global'}-${new Date().toISOString().slice(0, 10)}`;
+}
+
+// ✅ Vérifier si une notification a déjà été affichée
+function isNotificationAffichee(cleUnique: string): boolean {
+  const cached = NOTIFICATION_CACHE.get(cleUnique);
+  if (cached) {
+    // Si la notification a été lue ou affichée, ne pas la réafficher
+    return cached.read;
+  }
+  return false;
+}
+
+// ✅ Marquer une notification comme affichée
+export function marquerNotificationAffichee(cleUnique: string): void {
+  NOTIFICATION_CACHE.set(cleUnique, { read: true, timestamp: Date.now() });
+  
+  // ✅ Auto-disparition après 0.05s (50ms)
+  setTimeout(() => {
+    NOTIFICATION_CACHE.delete(cleUnique);
+  }, NOTIFICATION_DISPLAY_MS);
 }
 
 /**
@@ -196,7 +226,6 @@ async function detecterArriveesJour(): Promise<CandidatNotification[]> {
 
 /**
  * Règle 5 — Check-in retardé (§3.2.1 arrivée tardive)
- * ✅ CORRIGÉ : Utilise horaire_arrivee_tardive (TIME) au lieu de arriveeTardive (boolean)
  */
 async function detecterCheckinRetarde(): Promise<CandidatNotification[]> {
   const aujourdHui = new Date();
@@ -209,7 +238,6 @@ async function detecterCheckinRetarde(): Promise<CandidatNotification[]> {
     where: {
       dateArrivee: { [Op.between]: [debut, fin] },
       statut: { [Op.in]: ['CONFIRMEE', 'EN_ATTENTE_ACOMPTE'] },
-      // ✅ CORRECTION : vérifier que horaire_arrivee_tardive n'est pas null
       horaireArriveeTardive: { [Op.not]: null },
     },
     include: [
@@ -222,7 +250,6 @@ async function detecterCheckinRetarde(): Promise<CandidatNotification[]> {
   });
 
   return reservations.map((r: any) => {
-    // ✅ Formater l'heure (horaire_arrivee_tardive est de type TIME)
     const heureArrivee = r.horaireArriveeTardive 
       ? typeof r.horaireArriveeTardive === 'string' 
         ? r.horaireArriveeTardive.slice(0, 5) 
@@ -257,7 +284,13 @@ export async function genererEtRecupererNotifications(limite = 50) {
   // Dédupliquer par cleUnique
   const uniqueCandidats = new Map<string, CandidatNotification>();
   for (const candidat of candidats) {
-    const cleUnique = `${candidat.type}-${candidat.reservationId ?? 'global'}`;
+    const cleUnique = genererCleUnique(candidat.type, candidat.reservationId);
+    
+    // ✅ Vérifier si la notification a déjà été affichée
+    if (isNotificationAffichee(cleUnique)) {
+      continue;
+    }
+    
     if (!uniqueCandidats.has(cleUnique)) {
       uniqueCandidats.set(cleUnique, candidat);
     }
@@ -265,15 +298,33 @@ export async function genererEtRecupererNotifications(limite = 50) {
 
   // Créer ou mettre à jour les notifications
   for (const [cleUnique, candidat] of uniqueCandidats) {
-    await Notification.findOrCreate({
-      where: { cleUnique },
-      defaults: { 
-        ...candidat, 
-        cleUnique, 
-        lu: false 
-      },
-    });
+    try {
+      const [notification, created] = await Notification.findOrCreate({
+        where: { cleUnique },
+        defaults: { 
+          ...candidat, 
+          cleUnique, 
+          lu: false 
+        },
+      });
+      
+      // ✅ Si la notification vient d'être créée, la marquer comme affichée
+      if (created) {
+        marquerNotificationAffichee(cleUnique);
+      }
+    } catch (error) {
+      console.error('[notification.service] Erreur création notification:', error);
+    }
   }
+
+  // ✅ Supprimer les notifications trop anciennes (plus de 7 jours)
+  const septJours = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+  await Notification.destroy({
+    where: {
+      createdAt: { [Op.lt]: septJours },
+      lu: true
+    }
+  });
 
   // Retourner les notifications les plus récentes
   return Notification.findAll({
@@ -288,8 +339,14 @@ export async function genererEtRecupererNotifications(limite = 50) {
 export async function marquerCommeLue(id: number): Promise<Notification | null> {
   const notification = await Notification.findByPk(id);
   if (!notification) return null;
+  
   notification.lu = true;
   await notification.save();
+  
+  // ✅ Ajouter au cache pour éviter de la réafficher
+  const cacheKey = notification.cleUnique || genererCleUnique(notification.type, notification.reservationId || undefined);
+  NOTIFICATION_CACHE.set(cacheKey, { read: true, timestamp: Date.now() });
+  
   return notification;
 }
 
@@ -298,6 +355,9 @@ export async function marquerCommeLue(id: number): Promise<Notification | null> 
  */
 export async function marquerToutesCommeLues(): Promise<void> {
   await Notification.update({ lu: true }, { where: { lu: false } });
+  
+  // ✅ Vider le cache
+  NOTIFICATION_CACHE.clear();
 }
 
 /**
@@ -346,3 +406,13 @@ export async function getNotificationsByReservation(reservationId: number): Prom
     order: [['createdAt', 'DESC']],
   });
 }
+
+// ✅ Nettoyer le cache périodiquement (toutes les 5 minutes)
+setInterval(() => {
+  const now = Date.now();
+  for (const [key, value] of NOTIFICATION_CACHE) {
+    if (now - value.timestamp > CACHE_TTL) {
+      NOTIFICATION_CACHE.delete(key);
+    }
+  }
+}, 5 * 60 * 1000);

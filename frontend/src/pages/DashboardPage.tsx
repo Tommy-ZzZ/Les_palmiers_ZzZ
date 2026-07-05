@@ -1,17 +1,20 @@
-// E:\Projets\les-palmiers\frontend\src\pages\DashboardPage.tsx
-// Version avec API complète connectée
+// frontend/src/pages/DashboardPage.tsx
+// Version avec API complète connectée + WebSocket temps réel
 
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
+import toast from 'react-hot-toast';
 import {
   BedDouble, CalendarCheck, TrendingUp, Users,
   Clock, Euro, Eye, Bike, Plane, MapPin, Building, Calendar,
   BarChart3, PieChart, Activity, Star, TrendingDown, Sparkles,
-  RefreshCw, ChevronRight, ChevronLeft, Award, Gift, Zap,
+  RefreshCw, Award, Gift, Zap,
   AlertCircle, UserCheck, UserX, Mail, Phone, X, Loader2,
-  CreditCard, Wallet, Receipt, DollarSign, CircleDollarSign,
-  CheckCircle2, AlertTriangle, Clock as ClockIcon
+  CreditCard, Wallet, Receipt, DollarSign,
+  CheckCircle2, AlertTriangle, Clock as ClockIcon,
+  Wifi as WifiIcon, WifiOff,
+  CheckCircle, Ban, Lock, Settings
 } from 'lucide-react';
 import {
   BarChart, Bar, PieChart as RePieChart, Pie,
@@ -20,24 +23,38 @@ import {
 } from 'recharts';
 import api from '../services/api';
 import { formatDate, formatEuro, initiales } from '../utils/helpers';
-import toast from 'react-hot-toast';
+import { useWebSocketContext } from '../context/WebSocketContext';
 
 // ============================================
 // TYPES
 // ============================================
 
-type StatutChambre = 'DISPONIBLE' | 'EN_MAINTENANCE' | 'HORS_SERVICE' | 'BLOQUEE' | 'OCCUPEE';
+type StatutChambre = 'DISPONIBLE' | 'OCCUPEE' | 'EN_MAINTENANCE' | 'HORS_SERVICE' | 'BLOQUEE';
+type StatutAffichage = StatutChambre | 'OCCUPEE';
 type StatutReservation = 'EN_ATTENTE_ACOMPTE' | 'CONFIRMEE' | 'ANNULEE' | 'TERMINEE' | 'NO_SHOW';
 type StatutClient = 'NOUVEAU' | 'REGULIER' | 'VIP';
-type SegmentClient = 'TOURISTE_INDIVIDUEL' | 'COUPLE' | 'FAMILLE' | 'GROUPE' | 'VOYAGEUR_AFFAIRES';
 type CanalAcquisition = 'DIRECT' | 'SITE_WEB' | 'BOOKING' | 'AGENCE_LOCALE' | 'BOUCHE_A_OREILLE';
 type TypeService = 'LOCATION_VELO' | 'TRANSFERT_AEROPORT' | 'ACTIVITE_GUIDE';
 type StatutPaiement = 'COMPLET' | 'PARTIEL' | 'EN_ATTENTE' | 'IMPREVU';
 type ModePaiement = 'ESPECES' | 'CARTE' | 'VIREMENT' | 'CHEQUE';
 type TypeVersement = 'ACOMPTE' | 'SOLDE' | 'ARRHES';
+type VueChambre = 'JARDIN' | 'PISCINE' | 'MONTAGNE';
+
+interface ReservationLight {
+  id: number;
+  chambreId: number;
+  dateArrivee: string;
+  dateDepart: string;
+  statut: 'CONFIRMEE' | 'EN_ATTENTE_ACOMPTE' | 'TERMINEE' | 'ANNULEE' | 'NO_SHOW';
+  client_nom?: string;
+  client_prenom?: string;
+  paiementComplet?: boolean;
+  codePromo?: string;
+  reduction?: number;
+}
 
 interface Chambre {
-  idChambre: number;
+  id: number;
   numero: string;
   nom: string;
   capaciteAdultes: number;
@@ -45,10 +62,12 @@ interface Chambre {
   nbLitsDoubles: number;
   nbLitsBebe: number;
   surfaceM2: number;
-  vue: 'JARDIN' | 'PISCINE' | 'MONTAGNE';
+  vue: VueChambre;
   accessiblePMR: boolean;
-  statut: StatutChambre;
+  statut: StatutAffichage;
   equipements: string[];
+  estOccupeeActuellement?: boolean;
+  reservationsActuelles?: ReservationLight[];
 }
 
 interface Client {
@@ -63,7 +82,7 @@ interface Client {
   ville: string;
   pays: string;
   statut: StatutClient;
-  segment: SegmentClient;
+  segment: string;
   origine_geographique: string;
   canal_acquisition: CanalAcquisition;
   allergies?: string;
@@ -76,7 +95,7 @@ interface Client {
 }
 
 interface Paiement {
-  idPaiement: number;
+  id: number;
   montant: number;
   mode: ModePaiement;
   typeVersement: TypeVersement;
@@ -87,7 +106,7 @@ interface Paiement {
 }
 
 interface ServiceAnnexe {
-  idService: number;
+  id: number;
   type: TypeService;
   dateHeureDebut: Date;
   dateHeureFin: Date;
@@ -98,7 +117,7 @@ interface ServiceAnnexe {
 }
 
 interface Reservation {
-  idReservation: number;
+  id: number;
   numeroReservation: string;
   dateArrivee: Date;
   dateDepart: Date;
@@ -123,135 +142,107 @@ interface Reservation {
   paiements: Paiement[];
 }
 
-interface PaiementStats {
-  totalEncaissements: number;
-  totalAcomptes: number;
-  totalSoldes: number;
-  totalArrhs: number;
-  totalImpayes: number;
-  paiementsRecents: Paiement[];
-  statutPaiements: {
-    COMPLET: number;
-    PARTIEL: number;
-    EN_ATTENTE: number;
-    IMPREVU: number;
-  };
-  paiementsParMode: {
-    ESPECES: number;
-    CARTE: number;
-    VIREMENT: number;
-    CHEQUE: number;
-  };
-}
-
 // ============================================
-// DONNÉES STATIQUES (fallback)
+// FONCTIONS DE NORMALISATION
 // ============================================
 
-const CHAMBRES_STATIC: Chambre[] = [
-  { idChambre: 1, numero: '101', nom: 'Chambre Vanille', capaciteAdultes: 2, nbLitsSimples: 0, nbLitsDoubles: 1, nbLitsBebe: 1, surfaceM2: 18, vue: 'JARDIN', accessiblePMR: false, statut: 'DISPONIBLE', equipements: ['climatisation', 'ventilateur', 'sèche-cheveux', 'bouilloire', 'mini-réfrigérateur'] },
-  { idChambre: 2, numero: '102', nom: 'Chambre Coco', capaciteAdultes: 2, nbLitsSimples: 1, nbLitsDoubles: 0, nbLitsBebe: 0, surfaceM2: 16, vue: 'PISCINE', accessiblePMR: false, statut: 'DISPONIBLE', equipements: ['ventilateur', 'sèche-cheveux', 'bouilloire'] },
-  { idChambre: 3, numero: '103', nom: 'Chambre Ylang', capaciteAdultes: 2, nbLitsSimples: 0, nbLitsDoubles: 1, nbLitsBebe: 1, surfaceM2: 20, vue: 'MONTAGNE', accessiblePMR: false, statut: 'DISPONIBLE', equipements: ['climatisation', 'ventilateur', 'sèche-cheveux', 'bouilloire', 'mini-réfrigérateur'] },
-  { idChambre: 4, numero: '104', nom: 'Chambre Vétiver', capaciteAdultes: 2, nbLitsSimples: 0, nbLitsDoubles: 1, nbLitsBebe: 0, surfaceM2: 17, vue: 'JARDIN', accessiblePMR: true, statut: 'DISPONIBLE', equipements: ['climatisation', 'sèche-cheveux', 'bouilloire', 'mini-réfrigérateur'] },
-  { idChambre: 5, numero: '201', nom: 'Suite Bougainvillée', capaciteAdultes: 4, nbLitsSimples: 2, nbLitsDoubles: 1, nbLitsBebe: 1, surfaceM2: 35, vue: 'PISCINE', accessiblePMR: false, statut: 'OCCUPEE', equipements: ['climatisation', 'ventilateur', 'sèche-cheveux', 'bouilloire', 'mini-réfrigérateur'] },
-  { idChambre: 6, numero: '202', nom: 'Chambre Géranium', capaciteAdultes: 2, nbLitsSimples: 0, nbLitsDoubles: 1, nbLitsBebe: 0, surfaceM2: 19, vue: 'MONTAGNE', accessiblePMR: false, statut: 'EN_MAINTENANCE', equipements: ['ventilateur', 'sèche-cheveux', 'bouilloire'] }
-];
+const toDate = (value: any): Date => (value ? new Date(value) : new Date());
 
-const CLIENTS_STATIC: Client[] = [
-  { id: 1, civilite: 'Mme', nom: 'DUPONT', prenom: 'Marie', email: 'marie.dupont@email.fr', telephone: '0612345678', adresse: '15 Rue des Lilas', code_postal: '75001', ville: 'Paris', pays: 'France', statut: 'REGULIER', segment: 'COUPLE', origine_geographique: 'METROPOLE', canal_acquisition: 'BOUCHE_A_OREILLE', allergies: 'Aucune', regime_alimentaire: 'Végétarien', chambre_preferee: 'Chambre Vanille', nb_sejours: 4, montant_total_depense: 1850, date_creation: '2024-01-15', vip: false },
-  { id: 2, civilite: 'M.', nom: 'MARTIN', prenom: 'Jean', email: 'jean.martin@email.fr', telephone: '0687654321', adresse: '8 Avenue des Palmiers', code_postal: '13001', ville: 'Marseille', pays: 'France', statut: 'VIP', segment: 'VOYAGEUR_AFFAIRES', origine_geographique: 'METROPOLE', canal_acquisition: 'DIRECT', allergies: 'Arachides', regime_alimentaire: 'Sans gluten', chambre_preferee: 'Suite Bougainvillée', nb_sejours: 5, montant_total_depense: 3420, date_creation: '2023-08-10', vip: true },
-  { id: 3, civilite: 'Mme', nom: 'BERNARD', prenom: 'Sophie', email: 'sophie.bernard@email.fr', telephone: '0678945612', adresse: '3 Rue des Orchidées', code_postal: '69001', ville: 'Lyon', pays: 'France', statut: 'NOUVEAU', segment: 'FAMILLE', origine_geographique: 'METROPOLE', canal_acquisition: 'SITE_WEB', allergies: 'Lactose', nb_sejours: 1, montant_total_depense: 890, date_creation: '2026-05-20', vip: false },
-  { id: 4, civilite: 'M.', nom: 'ROBERT', prenom: 'Thomas', email: 'thomas.robert@email.fr', telephone: '0645123678', adresse: '12 Rue de la Mer', code_postal: '97440', ville: 'L\'Entre-Deux', pays: 'France', statut: 'REGULIER', segment: 'TOURISTE_INDIVIDUEL', origine_geographique: 'AUTRES_DOM_TOM', canal_acquisition: 'AGENCE_LOCALE', allergies: 'Aucune', nb_sejours: 3, montant_total_depense: 720, date_creation: '2025-02-01', vip: false },
-  { id: 5, civilite: 'Mme', nom: 'RICHARD', prenom: 'Julie', email: 'julie.richard@email.fr', telephone: '0632147856', adresse: '25 Rue des Vacances', code_postal: '97400', ville: 'Saint-Denis', pays: 'France', statut: 'NOUVEAU', segment: 'GROUPE', origine_geographique: 'AUTRES_DOM_TOM', canal_acquisition: 'BOOKING', allergies: 'Fruits de mer', nb_sejours: 1, montant_total_depense: 450, date_creation: '2026-06-01', vip: false }
-];
+const normalizeChambre = (c: any): Chambre => ({
+  id: c?.id ?? c?.idChambre ?? 0,
+  numero: c?.numero ?? '',
+  nom: c?.nom ?? '',
+  capaciteAdultes: c?.capaciteAdultes ?? c?.capacite_adultes ?? c?.capacite ?? 2,
+  nbLitsSimples: c?.nbLitsSimples ?? c?.nb_lits_simples ?? 0,
+  nbLitsDoubles: c?.nbLitsDoubles ?? c?.nb_lits_doubles ?? 0,
+  nbLitsBebe: c?.nbLitsBebe ?? c?.nb_lits_bebe ?? 0,
+  surfaceM2: c?.surfaceM2 ?? c?.surface_m2 ?? c?.surface ?? 0,
+  vue: c?.vue ?? 'JARDIN',
+  accessiblePMR: c?.accessiblePMR ?? c?.accessible_pmr ?? false,
+  statut: c?.statut ?? 'DISPONIBLE',
+  equipements: c?.equipements ?? [],
+  estOccupeeActuellement: c?.estOccupeeActuellement ?? false,
+  reservationsActuelles: c?.reservationsActuelles ?? []
+});
 
-const PAIEMENTS_STATIC: Paiement[] = [
-  { idPaiement: 1, montant: 135, mode: 'CARTE', typeVersement: 'ACOMPTE', dateHeure: new Date(2026, 5, 25), reference: 'PAY-2026-0001', reservationId: 1 },
-  { idPaiement: 2, montant: 84, mode: 'VIREMENT', typeVersement: 'ACOMPTE', dateHeure: new Date(2026, 5, 26), reference: 'PAY-2026-0002', reservationId: 3 },
-  { idPaiement: 3, montant: 216, mode: 'CARTE', typeVersement: 'ACOMPTE', dateHeure: new Date(2026, 5, 22), reference: 'PAY-2026-0003', reservationId: 4 },
-  { idPaiement: 4, montant: 117, mode: 'CARTE', typeVersement: 'ACOMPTE', dateHeure: new Date(2026, 5, 20), reference: 'PAY-2026-0004', reservationId: 5 },
-  { idPaiement: 5, montant: 273, mode: 'ESPECES', typeVersement: 'SOLDE', dateHeure: new Date(2026, 5, 28), reference: 'PAY-2026-0005', reservationId: 5 },
-  { idPaiement: 6, montant: 168, mode: 'CARTE', typeVersement: 'ACOMPTE', dateHeure: new Date(2026, 5, 15), reference: 'PAY-2026-0006', reservationId: 6 }
-];
+const normalizeClient = (c: any): Client => ({
+  id: c?.id ?? 0,
+  civilite: c?.civilite ?? '',
+  nom: c?.nom ?? '',
+  prenom: c?.prenom ?? '',
+  email: c?.email ?? '',
+  telephone: c?.telephone ?? '',
+  adresse: c?.adresse ?? '',
+  code_postal: c?.code_postal ?? c?.codePostal ?? '',
+  ville: c?.ville ?? '',
+  pays: c?.pays ?? 'France',
+  statut: c?.statut ?? 'NOUVEAU',
+  segment: c?.segment ?? 'TOURISTE_INDIVIDUEL',
+  origine_geographique: c?.origine_geographique ?? c?.origineGeo ?? '',
+  canal_acquisition: c?.canal_acquisition ?? c?.canalAcquisition ?? 'DIRECT',
+  allergies: c?.allergies,
+  regime_alimentaire: c?.regime_alimentaire ?? c?.regimeAlimentaire,
+  chambre_preferee: c?.chambre_preferee ?? c?.chambrePreferee,
+  nb_sejours: c?.nb_sejours ?? c?.nbSejours ?? 0,
+  montant_total_depense: c?.montant_total_depense ?? c?.montantTotalDepense ?? 0,
+  date_creation: c?.date_creation ?? c?.dateCreation ?? new Date().toISOString(),
+  vip: c?.vip ?? false
+});
 
-const generateReservationsStatic = (): Reservation[] => {
-  const today = new Date();
-  return [
-    {
-      idReservation: 1, numeroReservation: 'RES-2026-0001',
-      dateArrivee: new Date(today.getFullYear(), today.getMonth(), today.getDate()),
-      dateDepart: new Date(today.getFullYear(), today.getMonth(), today.getDate() + 3),
-      nbAdultes: 2, nbEnfants: 0, nbNuits: 3, statut: 'CONFIRMEE',
-      petitDejeunerInclus: true, montantTotal: 450, montantAcompte: 135, montantSolde: 315, montantRestantDu: 0,
-      heureArriveePrevisionnelle: '15:00', litBebe: false, arriveeTardive: false,
-      dateCreation: new Date(today.getFullYear(), today.getMonth(), today.getDate() - 7),
-      chambre: CHAMBRES_STATIC[0], client: CLIENTS_STATIC[0], servicesAnnexes: [],
-      paiements: [PAIEMENTS_STATIC[0]]
-    },
-    {
-      idReservation: 2, numeroReservation: 'RES-2026-0002',
-      dateArrivee: new Date(today.getFullYear(), today.getMonth(), today.getDate()),
-      dateDepart: new Date(today.getFullYear(), today.getMonth(), today.getDate() + 5),
-      nbAdultes: 2, nbEnfants: 2, nbNuits: 5, statut: 'EN_ATTENTE_ACOMPTE',
-      petitDejeunerInclus: false, montantTotal: 890, montantAcompte: 267, montantSolde: 623, montantRestantDu: 890,
-      demandeSpeciale: 'Lit bébé requis', heureArriveePrevisionnelle: '18:00', litBebe: true, arriveeTardive: true,
-      dateCreation: new Date(today.getFullYear(), today.getMonth(), today.getDate() - 1),
-      chambre: CHAMBRES_STATIC[4], client: CLIENTS_STATIC[2], servicesAnnexes: [], paiements: []
-    },
-    {
-      idReservation: 3, numeroReservation: 'RES-2026-0003',
-      dateArrivee: new Date(today.getFullYear(), today.getMonth(), today.getDate() + 2),
-      dateDepart: new Date(today.getFullYear(), today.getMonth(), today.getDate() + 4),
-      nbAdultes: 1, nbEnfants: 0, nbNuits: 2, statut: 'CONFIRMEE',
-      petitDejeunerInclus: true, montantTotal: 280, montantAcompte: 84, montantSolde: 196, montantRestantDu: 196,
-      heureArriveePrevisionnelle: '14:00', litBebe: false, arriveeTardive: false,
-      dateCreation: new Date(today.getFullYear(), today.getMonth(), today.getDate() - 3),
-      chambre: CHAMBRES_STATIC[3], client: CLIENTS_STATIC[3],
-      servicesAnnexes: [{ idService: 1, type: 'LOCATION_VELO', dateHeureDebut: new Date(today.getFullYear(), today.getMonth(), today.getDate() + 2, 9, 0), dateHeureFin: new Date(today.getFullYear(), today.getMonth(), today.getDate() + 2, 17, 0), montant: 25, statut: 'CONFIRME', details: { typeVelo: 'VTT', taille: 'M' } }],
-      paiements: [PAIEMENTS_STATIC[1]]
-    },
-    {
-      idReservation: 4, numeroReservation: 'RES-2026-0004',
-      dateArrivee: new Date(today.getFullYear(), today.getMonth(), today.getDate() + 5),
-      dateDepart: new Date(today.getFullYear(), today.getMonth(), today.getDate() + 10),
-      nbAdultes: 2, nbEnfants: 0, nbNuits: 5, statut: 'CONFIRMEE',
-      petitDejeunerInclus: true, montantTotal: 720, montantAcompte: 216, montantSolde: 504, montantRestantDu: 504,
-      heureArriveePrevisionnelle: '16:00', litBebe: false, arriveeTardive: false,
-      dateCreation: new Date(today.getFullYear(), today.getMonth(), today.getDate() - 10),
-      chambre: CHAMBRES_STATIC[4], client: CLIENTS_STATIC[1],
-      servicesAnnexes: [{ idService: 2, type: 'TRANSFERT_AEROPORT', dateHeureDebut: new Date(today.getFullYear(), today.getMonth(), today.getDate() + 5, 10, 0), dateHeureFin: new Date(today.getFullYear(), today.getMonth(), today.getDate() + 5, 11, 0), montant: 45, statut: 'CONFIRME', details: { sens: 'ALLER', numeroVol: 'AF 123', nbPersonnes: 2 } }],
-      paiements: [PAIEMENTS_STATIC[2]]
-    },
-    {
-      idReservation: 5, numeroReservation: 'RES-2026-0005',
-      dateArrivee: new Date(today.getFullYear(), today.getMonth(), today.getDate() - 2),
-      dateDepart: new Date(today.getFullYear(), today.getMonth(), today.getDate()),
-      nbAdultes: 2, nbEnfants: 0, nbNuits: 2, statut: 'TERMINEE',
-      petitDejeunerInclus: true, montantTotal: 390, montantAcompte: 117, montantSolde: 273, montantRestantDu: 0,
-      heureArriveePrevisionnelle: '14:30', litBebe: false, arriveeTardive: false,
-      dateCreation: new Date(today.getFullYear(), today.getMonth(), today.getDate() - 15),
-      chambre: CHAMBRES_STATIC[0], client: CLIENTS_STATIC[4], servicesAnnexes: [],
-      paiements: [PAIEMENTS_STATIC[3], PAIEMENTS_STATIC[4]]
-    },
-    {
-      idReservation: 6, numeroReservation: 'RES-2026-0006',
-      dateArrivee: new Date(today.getFullYear(), today.getMonth(), today.getDate() + 1),
-      dateDepart: new Date(today.getFullYear(), today.getMonth(), today.getDate() + 3),
-      nbAdultes: 3, nbEnfants: 1, nbNuits: 2, statut: 'ANNULEE',
-      petitDejeunerInclus: false, montantTotal: 560, montantAcompte: 168, montantSolde: 392, montantRestantDu: 0,
-      motifAnnulation: 'Problème de santé', demandeSpeciale: 'Allergie aux acariens',
-      heureArriveePrevisionnelle: '20:00', litBebe: true, arriveeTardive: true,
-      dateCreation: new Date(today.getFullYear(), today.getMonth(), today.getDate() - 20),
-      chambre: CHAMBRES_STATIC[2], client: CLIENTS_STATIC[0], servicesAnnexes: [],
-      paiements: [PAIEMENTS_STATIC[5]]
-    }
-  ];
+const normalizePaiement = (p: any): Paiement => ({
+  id: p?.id ?? p?.idPaiement ?? 0,
+  montant: Number(p?.montant ?? 0),
+  mode: p?.mode ?? 'CARTE',
+  typeVersement: p?.typeVersement ?? p?.type ?? 'ACOMPTE',
+  dateHeure: toDate(p?.dateHeure ?? p?.date),
+  reference: p?.reference ?? '',
+  reservationId: p?.reservationId ?? p?.reservation_id,
+  statut: p?.statut ?? 'COMPLET'
+});
+
+const normalizeReservation = (r: any): Reservation => {
+  const dateArrivee = toDate(r?.dateArrivee ?? r?.date_arrivee);
+  const dateDepart = toDate(r?.dateDepart ?? r?.date_depart);
+  const nbNuits = r?.nbNuits ?? r?.nb_nuits ?? Math.max(1, Math.ceil((dateDepart.getTime() - dateArrivee.getTime()) / 86400000) || 1);
+
+  return {
+    id: r?.id ?? r?.idReservation ?? 0,
+    numeroReservation: r?.numeroReservation ?? r?.numero ?? '',
+    dateArrivee,
+    dateDepart,
+    nbAdultes: r?.nbAdultes ?? r?.nb_adultes ?? 1,
+    nbEnfants: r?.nbEnfants ?? r?.nb_enfants ?? 0,
+    nbNuits,
+    statut: r?.statut ?? 'CONFIRMEE',
+    petitDejeunerInclus: r?.petitDejeunerInclus ?? r?.petit_dejeuner_inclus ?? false,
+    montantTotal: Number(r?.montantTotal ?? r?.montant_total ?? 0),
+    montantAcompte: Number(r?.montantAcompte ?? r?.montant_acompte ?? 0),
+    montantSolde: Number(r?.montantSolde ?? r?.montant_solde ?? 0),
+    montantRestantDu: Number(r?.montantRestantDu ?? r?.montant_restant_du ?? 0),
+    demandeSpeciale: r?.demandeSpeciale ?? r?.demandesSpeciales ?? r?.demande_speciale,
+    heureArriveePrevisionnelle: r?.heureArriveePrevisionnelle ?? r?.horaireArriveeTardive,
+    litBebe: r?.litBebe ?? r?.lit_bebe ?? false,
+    arriveeTardive: r?.arriveeTardive ?? !!(r?.horaireArriveeTardive),
+    dateCreation: toDate(r?.dateCreation ?? r?.createdAt ?? r?.date_creation),
+    motifAnnulation: r?.motifAnnulation ?? r?.motif_annulation,
+    chambre: normalizeChambre(r?.chambre ?? {}),
+    client: normalizeClient(r?.client ?? {}),
+    servicesAnnexes: (r?.servicesAnnexes ?? r?.services_annexes ?? []).map((s: any) => ({
+      id: s?.id ?? 0,
+      type: s?.type ?? 'ACTIVITE_GUIDE',
+      dateHeureDebut: toDate(s?.dateHeureDebut ?? s?.dateDebut),
+      dateHeureFin: toDate(s?.dateHeureFin ?? s?.dateFin),
+      montant: Number(s?.montant ?? 0),
+      statut: s?.statut ?? 'CONFIRME',
+      notes: s?.notes ?? '',
+      details: s?.details ?? {}
+    })),
+    paiements: (r?.paiements ?? []).map(normalizePaiement)
+  };
 };
 
-const RESERVATIONS_STATIC = generateReservationsStatic();
-
 // ============================================
-// DONNÉES POUR LES GRAPHIQUES
+// DONNÉES POUR LES GRAPHIQUES (statiques)
 // ============================================
 
 const OCCUPANCY_DATA = [
@@ -282,184 +273,18 @@ const ACQUISITION_DATA = [
 ];
 
 // ============================================
-// NORMALISATION API
-// ============================================
-
-const toDate = (value: any) => (value ? new Date(value) : new Date());
-
-const normalizeChambre = (c: any): Chambre => ({
-  idChambre: c?.idChambre ?? c?.id ?? 0,
-  numero: c?.numero ?? '',
-  nom: c?.nom ?? '',
-  capaciteAdultes: c?.capaciteAdultes ?? c?.capacite_adultes ?? c?.capacite ?? 2,
-  nbLitsSimples: c?.nbLitsSimples ?? c?.nb_lits_simples ?? 0,
-  nbLitsDoubles: c?.nbLitsDoubles ?? c?.nb_lits_doubles ?? 0,
-  nbLitsBebe: c?.nbLitsBebe ?? c?.nb_lits_bebe ?? 0,
-  surfaceM2: c?.surfaceM2 ?? c?.surface_m2 ?? c?.surface ?? 0,
-  vue: c?.vue ?? 'JARDIN',
-  accessiblePMR: c?.accessiblePMR ?? c?.accessible_pmr ?? false,
-  statut: c?.statut ?? 'DISPONIBLE',
-  equipements: c?.equipements ?? []
-});
-
-const normalizeClient = (c: any): Client => ({
-  id: c?.id ?? 0,
-  civilite: c?.civilite ?? '',
-  nom: c?.nom ?? '',
-  prenom: c?.prenom ?? '',
-  email: c?.email ?? '',
-  telephone: c?.telephone ?? '',
-  adresse: c?.adresse ?? '',
-  code_postal: c?.code_postal ?? c?.codePostal ?? '',
-  ville: c?.ville ?? '',
-  pays: c?.pays ?? 'France',
-  statut: c?.statut ?? 'NOUVEAU',
-  segment: c?.segment ?? 'TOURISTE_INDIVIDUEL',
-  origine_geographique: c?.origine_geographique ?? c?.origineGeo ?? '',
-  canal_acquisition: c?.canal_acquisition ?? c?.canalAcquisition ?? 'DIRECT',
-  allergies: c?.allergies,
-  regime_alimentaire: c?.regime_alimentaire ?? c?.regimeAlimentaire,
-  chambre_preferee: c?.chambre_preferee ?? c?.chambrePreferee,
-  nb_sejours: c?.nb_sejours ?? c?.nbSejours ?? 0,
-  montant_total_depense: c?.montant_total_depense ?? c?.montantTotalDepense ?? 0,
-  date_creation: c?.date_creation ?? c?.dateCreation ?? new Date().toISOString(),
-  vip: c?.vip ?? false
-});
-
-const normalizePaiement = (p: any): Paiement => ({
-  idPaiement: p?.idPaiement ?? p?.id ?? 0,
-  montant: Number(p?.montant ?? 0),
-  mode: p?.mode ?? 'CARTE',
-  typeVersement: p?.typeVersement ?? p?.type ?? 'ACOMPTE',
-  dateHeure: toDate(p?.dateHeure ?? p?.date),
-  reference: p?.reference ?? '',
-  reservationId: p?.reservationId ?? p?.reservation_id,
-  statut: p?.statut ?? 'COMPLET'
-});
-
-const normalizeReservation = (r: any): Reservation => {
-  const dateArrivee = toDate(r?.dateArrivee ?? r?.date_arrivee);
-  const dateDepart = toDate(r?.dateDepart ?? r?.date_depart);
-  const nbNuits = r?.nbNuits ?? r?.nb_nuits ?? Math.max(1, Math.ceil((dateDepart.getTime() - dateArrivee.getTime()) / 86400000) || 1);
-
-  // Normaliser le client avec fallback
-  const clientData = r?.client ?? {};
-  const client = normalizeClient(clientData);
-
-  // Normaliser la chambre avec fallback
-  const chambreData = r?.chambre ?? {};
-  const chambre = normalizeChambre(chambreData);
-
-  return {
-    idReservation: r?.idReservation ?? r?.id ?? 0,
-    numeroReservation: r?.numeroReservation ?? r?.numero ?? '',
-    dateArrivee,
-    dateDepart,
-    nbAdultes: r?.nbAdultes ?? r?.nb_adultes ?? 1,
-    nbEnfants: r?.nbEnfants ?? r?.nb_enfants ?? 0,
-    nbNuits,
-    statut: r?.statut ?? 'CONFIRMEE',
-    petitDejeunerInclus: r?.petitDejeunerInclus ?? r?.petit_dejeuner_inclus ?? false,
-    montantTotal: Number(r?.montantTotal ?? r?.montant_total ?? 0),
-    montantAcompte: Number(r?.montantAcompte ?? r?.montant_acompte ?? 0),
-    montantSolde: Number(r?.montantSolde ?? r?.montant_solde ?? 0),
-    montantRestantDu: Number(r?.montantRestantDu ?? r?.montant_restant_du ?? 0),
-    demandeSpeciale: r?.demandeSpeciale ?? r?.demandesSpeciales ?? r?.demande_speciale,
-    heureArriveePrevisionnelle: r?.heureArriveePrevisionnelle ?? r?.horaireArriveeTardive ?? r?.horaire_arrivee_tardive,
-    litBebe: r?.litBebe ?? r?.lit_bebe ?? false,
-    arriveeTardive: r?.arriveeTardive ?? !!(r?.horaireArriveeTardive ?? r?.horaire_arrivee_tardive),
-    dateCreation: toDate(r?.dateCreation ?? r?.createdAt ?? r?.date_creation),
-    motifAnnulation: r?.motifAnnulation ?? r?.motif_annulation,
-    chambre,
-    client,
-    servicesAnnexes: r?.servicesAnnexes ?? r?.services_annexes ?? [],
-    paiements: (r?.paiements ?? []).map(normalizePaiement)
-  };
-};
-
-const normalizeBikeService = (item: any): ServiceAnnexe => ({
-  idService: item?.id ?? item?.idService ?? 0,
-  type: 'LOCATION_VELO',
-  dateHeureDebut: toDate(item?.dateDebut ?? item?.dateHeureDebut),
-  dateHeureFin: toDate(item?.dateFin ?? item?.dateHeureFin),
-  montant: Number(item?.montant ?? 0),
-  statut: item?.statut ?? 'EN_COURS',
-  notes: item?.typeTarification,
-  details: item?.velo ? {
-    typeVelo: item.velo.type,
-    taille: item.velo.taille
-  } : item?.details
-});
-
-const normalizeTransferService = (item: any): ServiceAnnexe => ({
-  idService: item?.id ?? item?.idService ?? 0,
-  type: 'TRANSFERT_AEROPORT',
-  dateHeureDebut: toDate(item?.dateHeure ?? item?.dateHeureDebut),
-  dateHeureFin: toDate(item?.dateHeure ?? item?.dateHeureFin),
-  montant: Number(item?.montant ?? 0),
-  statut: item?.statut ?? 'PLANIFIE',
-  notes: item?.numeroVol,
-  details: item
-});
-
-const normalizeActivityService = (item: any): ServiceAnnexe => ({
-  idService: item?.id ?? item?.idService ?? 0,
-  type: 'ACTIVITE_GUIDE',
-  dateHeureDebut: toDate(item?.dateActivite ?? item?.dateHeureDebut),
-  dateHeureFin: toDate(item?.dateActivite ?? item?.dateHeureFin),
-  montant: Number(item?.montantPaye ?? item?.montant ?? 0),
-  statut: item?.statut ?? 'CONFIRMEE',
-  details: item
-});
-
-// ============================================
-// API HELPERS
-// ============================================
-
-const fetchAllClients = async (): Promise<Client[]> => {
-  try {
-    const limit = 100;
-    const allClients: Client[] = [];
-    let page = 1;
-    let totalPages = 1;
-
-    while (page <= totalPages) {
-      const res = await api.get('/clients', { params: { page, limit } });
-      const data = res.data?.data ?? res.data ?? [];
-      const pagination = res.data?.pagination ?? {};
-      totalPages = pagination.totalPages ?? pagination.pages ?? totalPages;
-      
-      if (Array.isArray(data)) {
-        allClients.push(...data.map(normalizeClient));
-      }
-
-      if (!pagination.totalPages && data.length < limit) {
-        break;
-      }
-
-      page += 1;
-    }
-
-    return allClients.length > 0 ? allClients : CLIENTS_STATIC;
-  } catch (error) {
-    console.error('[fetchAllClients] Erreur:', error);
-    return CLIENTS_STATIC;
-  }
-};
-
-// ============================================
 // ANIMATIONS
 // ============================================
 
 const fadeInUp = {
   hidden: { opacity: 0, y: 30 },
   visible: { opacity: 1, y: 0, transition: { duration: 0.6, ease: 'easeOut' } }
-} as const;
+};
 
 const fadeInScale = {
   hidden: { opacity: 0, scale: 0.9 },
   visible: { opacity: 1, scale: 1, transition: { duration: 0.5, ease: 'easeOut' } }
-} as const;
+};
 
 const staggerContainer = {
   hidden: { opacity: 0 },
@@ -467,12 +292,66 @@ const staggerContainer = {
     opacity: 1,
     transition: { staggerChildren: 0.08, delayChildren: 0.1 }
   }
-} as const;
+};
 
 const pulseAnimation = {
   scale: [1, 1.05, 1],
   transition: { duration: 2, repeat: Infinity, ease: 'easeInOut' }
-} as any;
+};
+
+// ============================================
+// CONFIGURATION DES STATUTS
+// ============================================
+
+const STATUT_CONFIG: Record<StatutAffichage, {
+  label: string;
+  dot: string;
+  badge: string;
+  text: string;
+  icon: React.ReactNode;
+  bgGradient: string;
+}> = {
+  DISPONIBLE: {
+    label: 'Disponible',
+    dot: 'bg-emerald-400',
+    badge: 'bg-emerald-50 border-emerald-200 text-emerald-700',
+    text: 'text-emerald-700',
+    icon: <CheckCircle size={12} />,
+    bgGradient: 'from-emerald-50 to-emerald-100/30',
+  },
+  OCCUPEE: {
+    label: 'Occupée',
+    dot: 'bg-blue-400',
+    badge: 'bg-blue-50 border-blue-200 text-blue-700',
+    text: 'text-blue-700',
+    icon: <Users size={12} />,
+    bgGradient: 'from-blue-50 to-blue-100/30',
+  },
+  EN_MAINTENANCE: {
+    label: 'Maintenance',
+    dot: 'bg-amber-400',
+    badge: 'bg-amber-50 border-amber-200 text-amber-700',
+    text: 'text-amber-700',
+    icon: <Settings size={12} />,
+    bgGradient: 'from-amber-50 to-amber-100/30',
+  },
+  HORS_SERVICE: {
+    label: 'Hors service',
+    dot: 'bg-red-400',
+    badge: 'bg-red-50 border-red-200 text-red-700',
+    text: 'text-red-700',
+    icon: <Ban size={12} />,
+    bgGradient: 'from-red-50 to-red-100/30',
+  },
+  BLOQUEE: {
+    label: 'Bloquée',
+    dot: 'bg-violet-400',
+    badge: 'bg-violet-50 border-violet-200 text-violet-700',
+    text: 'text-violet-700',
+    icon: <Lock size={12} />,
+    bgGradient: 'from-violet-50 to-violet-100/30',
+  },
+};
 
 // ============================================
 // COMPOSANTS
@@ -550,39 +429,14 @@ const StatusBadge = ({ statut }: { statut: StatutReservation }) => {
   );
 };
 
-// -- ClientStatusBadge --
-const ClientStatusBadge = ({ statut }: { statut: StatutClient }) => {
-  const styles: Record<StatutClient, { bg: string; text: string; icon: JSX.Element }> = {
-    'NOUVEAU': { bg: 'bg-blue-50', text: 'text-blue-700', icon: <UserX size={12} /> },
-    'REGULIER': { bg: 'bg-green-50', text: 'text-green-700', icon: <UserCheck size={12} /> },
-    'VIP': { bg: 'bg-yellow-50', text: 'text-yellow-700', icon: <Star size={12} className="fill-yellow-500" /> }
-  };
-  const s = styles[statut] || styles['NOUVEAU'];
+// -- ChambreStatusBadge --
+const ChambreStatusBadge = ({ statut, animated = false }: { statut: StatutAffichage; animated?: boolean }) => {
+  const cfg = STATUT_CONFIG[statut];
   return (
-    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${s.bg} ${s.text}`}>
-      {s.icon} {statut}
-    </span>
-  );
-};
-
-// -- PaiementStatusBadge --
-const PaiementStatusBadge = ({ statut }: { statut: StatutPaiement }) => {
-  const styles: Record<StatutPaiement, { bg: string; text: string; icon: JSX.Element }> = {
-    'COMPLET': { bg: 'bg-green-50', text: 'text-green-700', icon: <CheckCircle2 size={12} /> },
-    'PARTIEL': { bg: 'bg-yellow-50', text: 'text-yellow-700', icon: <AlertTriangle size={12} /> },
-    'EN_ATTENTE': { bg: 'bg-blue-50', text: 'text-blue-700', icon: <ClockIcon size={12} /> },
-    'IMPREVU': { bg: 'bg-red-50', text: 'text-red-700', icon: <AlertCircle size={12} /> }
-  };
-  const s = styles[statut] || styles['EN_ATTENTE'];
-  const labels: Record<StatutPaiement, string> = {
-    'COMPLET': 'Complet',
-    'PARTIEL': 'Partiel',
-    'EN_ATTENTE': 'En attente',
-    'IMPREVU': 'Imprévu'
-  };
-  return (
-    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${s.bg} ${s.text}`}>
-      {s.icon} {labels[statut]}
+    <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded-full border ${cfg.badge} ${animated ? 'animate-pulse' : ''}`}>
+      <span className={`w-1.5 h-1.5 rounded-full ${cfg.dot} ${animated ? 'animate-ping' : ''}`} />
+      {cfg.icon}
+      {cfg.label}
     </span>
   );
 };
@@ -596,7 +450,6 @@ const PaiementsSection = ({ paiements, reservations }: { paiements: Paiement[], 
   const currentMonth = today.getMonth();
   const currentYear = today.getFullYear();
 
-  // Statistiques paiements
   const paiementsMois = paiements.filter(p => {
     const d = new Date(p.dateHeure);
     return d.getMonth() === currentMonth && d.getFullYear() === currentYear;
@@ -607,13 +460,11 @@ const PaiementsSection = ({ paiements, reservations }: { paiements: Paiement[], 
   const totalSoldes = paiementsMois.filter(p => p.typeVersement === 'SOLDE').reduce((sum, p) => sum + p.montant, 0);
   const totalArrhs = paiementsMois.filter(p => p.typeVersement === 'ARRHES').reduce((sum, p) => sum + p.montant, 0);
 
-  // Paiements par mode
   const paiementsParMode = paiementsMois.reduce((acc, p) => {
     acc[p.mode] = (acc[p.mode] || 0) + p.montant;
     return acc;
   }, {} as Record<ModePaiement, number>);
 
-  // Impayés (réservations avec montant restant > 0)
   const impayes = reservations.filter(r => 
     r.montantRestantDu > 0 && 
     r.statut !== 'ANNULEE' && 
@@ -621,7 +472,6 @@ const PaiementsSection = ({ paiements, reservations }: { paiements: Paiement[], 
     r.statut !== 'TERMINEE'
   );
 
-  // Derniers paiements
   const paiementsRecents = [...paiements]
     .sort((a, b) => new Date(b.dateHeure).getTime() - new Date(a.dateHeure).getTime())
     .slice(0, 5);
@@ -663,7 +513,6 @@ const PaiementsSection = ({ paiements, reservations }: { paiements: Paiement[], 
         </span>
       </h3>
 
-      {/* Stats paiements */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mb-4">
         <div className="text-center p-2 bg-emerald-50 rounded-xl border border-emerald-100/50">
           <p className="text-lg font-bold text-emerald-700">{totalEncaissements.toFixed(0)}€</p>
@@ -683,7 +532,6 @@ const PaiementsSection = ({ paiements, reservations }: { paiements: Paiement[], 
         </div>
       </div>
 
-      {/* Paiements par mode */}
       <div className="flex flex-wrap gap-1.5 mb-4">
         {Object.entries(paiementsParMode).map(([mode, montant]) => (
           <div
@@ -700,7 +548,6 @@ const PaiementsSection = ({ paiements, reservations }: { paiements: Paiement[], 
         )}
       </div>
 
-      {/* Impayés */}
       {impayes.length > 0 && (
         <div className="mb-3 p-3 bg-red-50 rounded-xl border border-red-200">
           <div className="flex items-center gap-2 text-sm text-red-700 font-medium mb-1">
@@ -709,7 +556,7 @@ const PaiementsSection = ({ paiements, reservations }: { paiements: Paiement[], 
           </div>
           <div className="space-y-1">
             {impayes.slice(0, 3).map(r => (
-              <div key={r.idReservation} className="flex justify-between text-xs">
+              <div key={r.id} className="flex justify-between text-xs">
                 <span className="text-red-600">{r.client.prenom} {r.client.nom}</span>
                 <span className="font-bold text-red-700">{r.montantRestantDu.toFixed(0)}€</span>
               </div>
@@ -721,7 +568,6 @@ const PaiementsSection = ({ paiements, reservations }: { paiements: Paiement[], 
         </div>
       )}
 
-      {/* Derniers paiements */}
       <div>
         <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Derniers paiements</p>
         {paiementsRecents.length === 0 ? (
@@ -729,10 +575,10 @@ const PaiementsSection = ({ paiements, reservations }: { paiements: Paiement[], 
         ) : (
           <div className="space-y-1.5">
             {paiementsRecents.map((p, i) => {
-              const reservation = reservations.find(r => r.idReservation === p.reservationId);
+              const reservation = reservations.find(r => r.id === p.reservationId);
               return (
                 <motion.div
-                  key={p.idPaiement}
+                  key={p.id}
                   initial={{ opacity: 0, x: -10 }}
                   animate={{ opacity: 1, x: 0 }}
                   transition={{ delay: i * 0.06 }}
@@ -808,7 +654,7 @@ const ArrivalsDeparturesSection = ({ reservations }: { reservations: Reservation
             <div className="space-y-2">
               {arrivals.map((r, i) => (
                 <motion.div
-                  key={r.idReservation}
+                  key={r.id}
                   initial={{ opacity: 0, x: -15 }}
                   animate={{ opacity: 1, x: 0 }}
                   transition={{ delay: i * 0.08 }}
@@ -835,7 +681,7 @@ const ArrivalsDeparturesSection = ({ reservations }: { reservations: Reservation
             <div className="space-y-2">
               {departures.map((r, i) => (
                 <motion.div
-                  key={r.idReservation}
+                  key={r.id}
                   initial={{ opacity: 0, x: 15 }}
                   animate={{ opacity: 1, x: 0 }}
                   transition={{ delay: i * 0.08 }}
@@ -857,37 +703,10 @@ const ArrivalsDeparturesSection = ({ reservations }: { reservations: Reservation
 };
 
 // ============================================
-// SECTION: Occupation des chambres (avec API)
+// SECTION: Occupation des chambres
 // ============================================
 
-const RoomOccupancySection = ({ reservations, chambres, loading }: { reservations: Reservation[], chambres: Chambre[], loading?: boolean }) => {
-  const today = new Date();
-  const todayStr = today.toDateString();
-
-  const getRoomStatus = (chambre: Chambre) => {
-    const isOccupied = reservations.some(r => {
-      const arrivee = new Date(r.dateArrivee);
-      const depart = new Date(r.dateDepart);
-      return r.chambre?.idChambre === chambre.idChambre &&
-        arrivee.toDateString() <= todayStr &&
-        depart.toDateString() >= todayStr &&
-        r.statut !== 'ANNULEE' && r.statut !== 'NO_SHOW';
-    });
-    if (isOccupied) return 'OCCUPEE';
-    if (chambre.statut === 'EN_MAINTENANCE') return 'EN_MAINTENANCE';
-    if (chambre.statut === 'HORS_SERVICE') return 'HORS_SERVICE';
-    return 'DISPONIBLE';
-  };
-
-  const statusConfig: Record<string, { color: string; bg: string; border: string; label: string; dot: string }> = {
-    'DISPONIBLE': { color: 'text-green-700', bg: 'bg-green-50', border: 'border-green-200', label: 'Disponible', dot: 'bg-green-500' },
-    'OCCUPEE': { color: 'text-blue-700', bg: 'bg-blue-50', border: 'border-blue-200', label: 'Occupée', dot: 'bg-blue-500' },
-    'EN_MAINTENANCE': { color: 'text-amber-700', bg: 'bg-amber-50', border: 'border-amber-200', label: 'Maintenance', dot: 'bg-amber-500' },
-    'HORS_SERVICE': { color: 'text-red-700', bg: 'bg-red-50', border: 'border-red-200', label: 'Hors service', dot: 'bg-red-500' }
-  };
-
-  const availableCount = chambres.filter(c => getRoomStatus(c) === 'DISPONIBLE').length;
-
+const RoomOccupancySection = ({ chambres, loading }: { chambres: Chambre[], loading?: boolean }) => {
   if (loading) {
     return (
       <motion.div variants={fadeInUp} className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4">
@@ -898,6 +717,8 @@ const RoomOccupancySection = ({ reservations, chambres, loading }: { reservation
       </motion.div>
     );
   }
+
+  const availableCount = chambres.filter(c => !c.estOccupeeActuellement).length;
 
   return (
     <motion.div variants={fadeInUp} className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4">
@@ -916,22 +737,32 @@ const RoomOccupancySection = ({ reservations, chambres, loading }: { reservation
       </div>
       <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
         {chambres.map((chambre, i) => {
-          const status = getRoomStatus(chambre);
-          const config = statusConfig[status] || statusConfig.DISPONIBLE;
+          const estOccupee = chambre.estOccupeeActuellement || false;
+          const statut: StatutAffichage = estOccupee ? 'OCCUPEE' : (chambre.statut || 'DISPONIBLE');
+          
           return (
             <motion.div
-              key={chambre.idChambre}
+              key={chambre.id}
               initial={{ opacity: 0, scale: 0.85 }}
               animate={{ opacity: 1, scale: 1 }}
               transition={{ delay: i * 0.06 }}
               whileHover={{ scale: 1.04, y: -2 }}
-              className={`p-3 rounded-xl border ${config.bg} ${config.border} transition-all duration-200 cursor-default`}
+              className={`p-3 rounded-xl border transition-all duration-200 cursor-default ${
+                estOccupee 
+                  ? 'bg-blue-50 border-blue-200' 
+                  : chambre.statut === 'EN_MAINTENANCE'
+                    ? 'bg-amber-50 border-amber-200'
+                    : chambre.statut === 'HORS_SERVICE'
+                      ? 'bg-red-50 border-red-200'
+                      : chambre.statut === 'BLOQUEE'
+                        ? 'bg-purple-50 border-purple-200'
+                        : 'bg-green-50 border-green-200'
+              }`}
             >
               <p className="font-bold text-sm text-gray-800">{chambre.nom}</p>
               <p className="text-xs text-gray-400">{chambre.numero}</p>
-              <div className="flex items-center gap-1.5 mt-1">
-                <div className={`w-1.5 h-1.5 rounded-full ${config.dot}`} />
-                <p className={`text-xs font-medium ${config.color}`}>{config.label}</p>
+              <div className="mt-1">
+                <ChambreStatusBadge statut={statut} animated={estOccupee} />
               </div>
             </motion.div>
           );
@@ -1123,7 +954,7 @@ const ActiveServicesSection = ({ reservations }: { reservations: Reservation[] }
         <div className="space-y-2">
           {active.map((s, i) => (
             <motion.div
-              key={s.idService}
+              key={s.id}
               initial={{ opacity: 0, x: -10 }}
               animate={{ opacity: 1, x: 0 }}
               transition={{ delay: i * 0.06 }}
@@ -1268,13 +1099,13 @@ const RecentReservationsSection = ({ reservations, onView }: { reservations: Res
           <tbody className="divide-y divide-gray-50">
             {sorted.map((r, i) => (
               <motion.tr
-                key={r.idReservation}
+                key={r.id}
                 initial={{ opacity: 0, y: 5 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: i * 0.05 }}
                 whileHover={{ backgroundColor: '#f9fafb' }}
                 className="cursor-pointer transition-colors"
-                onClick={() => onView(r.idReservation)}
+                onClick={() => onView(r.id)}
               >
                 <td className="px-4 py-3 text-xs font-mono text-gray-500">{r.numeroReservation}</td>
                 <td className="px-4 py-3 font-medium text-gray-900">
@@ -1289,7 +1120,7 @@ const RecentReservationsSection = ({ reservations, onView }: { reservations: Res
                   <motion.button
                     whileHover={{ scale: 1.1 }}
                     whileTap={{ scale: 0.95 }}
-                    onClick={(e) => { e.stopPropagation(); onView(r.idReservation); }}
+                    onClick={(e) => { e.stopPropagation(); onView(r.id); }}
                     className="p-1.5 rounded-lg hover:bg-emerald-50 text-emerald-600 transition-colors"
                   >
                     <Eye size={16} />
@@ -1308,12 +1139,6 @@ const RecentReservationsSection = ({ reservations, onView }: { reservations: Res
 // OVERLAY DÉTAIL CLIENT
 // ============================================
 
-interface ClientDetail {
-  client: Client;
-  reservations: any[];
-  enfants: any[];
-}
-
 const ClientDetailOverlay = ({ 
   client, 
   onClose, 
@@ -1324,38 +1149,6 @@ const ClientDetailOverlay = ({
   onEdit: (client: Client) => void;
 }) => {
   const [loading, setLoading] = useState(false);
-  const [detail, setDetail] = useState<ClientDetail | null>(null);
-
-  useEffect(() => {
-    const fetchDetail = async () => {
-      setLoading(true);
-      try {
-        const res = await api.get(`/clients/${client.id}/detail`);
-        setDetail(res.data.data);
-      } catch (error) {
-        console.error('Erreur chargement détail client:', error);
-        toast.error('Erreur lors du chargement des détails');
-        setDetail({
-          client: client,
-          reservations: RESERVATIONS_STATIC
-            .filter(r => r.client.id === client.id)
-            .map(r => ({
-              id: r.idReservation,
-              numero_reservation: r.numeroReservation,
-              date_arrivee: r.dateArrivee,
-              date_depart: r.dateDepart,
-              chambre_nom: r.chambre.nom,
-              montant_total: r.montantTotal,
-              statut: r.statut
-            })),
-          enfants: []
-        });
-      } finally {
-        setLoading(false);
-      }
-    };
-    fetchDetail();
-  }, [client.id]);
 
   return (
     <div 
@@ -1368,7 +1161,6 @@ const ClientDetailOverlay = ({
         exit={{ opacity: 0, scale: 0.95, y: 20 }}
         className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto"
       >
-        {/* En-tête */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 sticky top-0 bg-white z-10 rounded-t-2xl">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center font-bold">
@@ -1382,7 +1174,7 @@ const ClientDetailOverlay = ({
                 )}
               </h2>
               <div className="flex items-center gap-2">
-                <ClientStatusBadge statut={client.statut} />
+                <span className="text-xs bg-gray-100 text-gray-700 px-2 py-0.5 rounded-full">{client.statut}</span>
                 <span className="text-xs text-gray-400">{client.email}</span>
               </div>
             </div>
@@ -1392,15 +1184,13 @@ const ClientDetailOverlay = ({
           </button>
         </div>
 
-        {/* Contenu */}
         <div className="p-6">
           {loading ? (
             <div className="flex items-center justify-center py-12">
               <div className="w-8 h-8 border-4 border-emerald-200 border-t-emerald-600 rounded-full animate-spin" />
             </div>
-          ) : detail ? (
+          ) : (
             <div className="space-y-4">
-              {/* Infos générales */}
               <div className="grid grid-cols-2 gap-3 bg-gray-50 rounded-xl p-4">
                 <div>
                   <p className="text-xs text-gray-500">Téléphone</p>
@@ -1436,7 +1226,6 @@ const ClientDetailOverlay = ({
                 </div>
               </div>
 
-              {/* Préférences */}
               {(client.allergies || client.regime_alimentaire || client.chambre_preferee) && (
                 <div>
                   <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Préférences</h4>
@@ -1463,30 +1252,6 @@ const ClientDetailOverlay = ({
                 </div>
               )}
 
-              {/* Réservations récentes */}
-              {detail.reservations && detail.reservations.length > 0 && (
-                <div>
-                  <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
-                    Réservations ({detail.reservations.length})
-                  </h4>
-                  <div className="space-y-1 max-h-40 overflow-y-auto">
-                    {detail.reservations.slice(0, 5).map((r: any) => (
-                      <div key={r.id} className="flex items-center justify-between text-sm p-2 bg-gray-50 rounded-lg">
-                        <div>
-                          <p className="font-medium text-gray-900">{r.chambre_nom || '—'}</p>
-                          <p className="text-xs text-gray-400">{formatDate(r.date_arrivee)} → {formatDate(r.date_depart)}</p>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <span className="font-semibold text-emerald-700">{r.montant_total || 0}€</span>
-                          <StatusBadge statut={r.statut} />
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {/* Actions */}
               <div className="flex gap-2 pt-3 border-t border-gray-100">
                 <button
                   onClick={() => { onClose(); onEdit(client); }}
@@ -1505,7 +1270,7 @@ const ClientDetailOverlay = ({
                 </button>
               </div>
             </div>
-          ) : null}
+          )}
         </div>
       </motion.div>
     </div>
@@ -1513,166 +1278,190 @@ const ClientDetailOverlay = ({
 };
 
 // ============================================
-// COMPOSANT PRINCIPAL
+// PAGE PRINCIPALE
 // ============================================
 
 export default function DashboardPage() {
   const navigate = useNavigate();
+  
+  // ✅ Récupération du contexte WebSocket
+  const { 
+    isConnected, 
+    subscribe, 
+    refreshDashboard,
+    connectionError 
+  } = useWebSocketContext();
+  
   const [loading, setLoading] = useState(true);
   const [loadingChambres, setLoadingChambres] = useState(true);
-  const [clients, setClients] = useState<Client[]>(CLIENTS_STATIC);
-  const [reservations, setReservations] = useState<Reservation[]>(RESERVATIONS_STATIC);
-  const [chambres, setChambres] = useState<Chambre[]>(CHAMBRES_STATIC);
-  const [paiements, setPaiements] = useState<Paiement[]>(PAIEMENTS_STATIC);
+  const [clients, setClients] = useState<Client[]>([]);
+  const [reservations, setReservations] = useState<Reservation[]>([]);
+  const [chambres, setChambres] = useState<Chambre[]>([]);
+  const [paiements, setPaiements] = useState<Paiement[]>([]);
   const [lastRefresh, setLastRefresh] = useState(new Date());
   const [selectedClient, setSelectedClient] = useState<Client | null>(null);
   const [showClientDetail, setShowClientDetail] = useState(false);
+  
+  const isFetching = useRef(false);
 
-  // ─── Chargement des données ────────────────────────────────────────────────────
+  // ─── CHARGEMENT DES DONNÉES ────────────────────────────────────────────────────
 
   const fetchDashboardData = useCallback(async () => {
+    if (isFetching.current) return;
+    isFetching.current = true;
     setLoading(true);
-    setLoadingChambres(true);
+
     try {
-      // Récupération des clients en premier (avec fallback)
-      const clientsData = await fetchAllClients();
-      setClients(clientsData.length > 0 ? clientsData : CLIENTS_STATIC);
+      console.log('📊 [Dashboard] Chargement des données...');
 
-      // Récupération des chambres
+      // 1. Récupérer les clients
+      const clientsRes = await api.get('/clients', { params: { limit: 100 } });
+      const clientsData = clientsRes.data?.data ?? clientsRes.data ?? [];
+      setClients(clientsData.map(normalizeClient));
+      console.log(`📊 [Dashboard] ${clientsData.length} clients chargés`);
+
+      // 2. Récupérer les chambres avec occupation
+      setLoadingChambres(true);
       let chambresData: any[] = [];
+      let statsData: any = {};
+      
       try {
-        const chambresRes = await api.get('/chambres');
-        chambresData = chambresRes.data?.data ?? chambresRes.data ?? [];
+        // ✅ Utiliser l'API unifiée comme dans ChambresPage
+        const chambresRes = await api.get('/chambres/avec-occupation');
+        const data = chambresRes.data?.data ?? chambresRes.data ?? {};
+        
+        chambresData = data.chambres || [];
+        statsData = data.statistiques || {};
+        
+        console.log(`📊 [Dashboard] ${chambresData.length} chambres chargées avec occupation`);
+        console.log('📊 [Dashboard] Stats:', statsData);
       } catch (e) {
-        console.warn('[Dashboard] Erreur chambres, fallback static', e);
-        chambresData = CHAMBRES_STATIC;
+        console.warn('[Dashboard] Erreur chambres/avec-occupation, fallback:', e);
+        // Fallback sur /chambres simple
+        const fallbackRes = await api.get('/chambres');
+        chambresData = fallbackRes.data?.data ?? fallbackRes.data ?? [];
+        console.log(`📊 [Dashboard] ${chambresData.length} chambres chargées (fallback)`);
       }
-      setChambres((chambresData.length > 0 ? chambresData : CHAMBRES_STATIC).map(normalizeChambre));
+      
+      // Normaliser les chambres
+      const normalizedChambres = chambresData.map((c: any) => normalizeChambre(c));
+      setChambres(normalizedChambres);
+      setLoadingChambres(false);
 
-      // Récupération des réservations
+      // 3. Récupérer les réservations
       let reservationsData: any[] = [];
       try {
-        const reservationsRes = await api.get('/reservations');
+        const reservationsRes = await api.get('/reservations', { params: { limit: 100 } });
         reservationsData = reservationsRes.data?.data ?? reservationsRes.data ?? [];
+        console.log(`📊 [Dashboard] ${reservationsData.length} réservations chargées`);
       } catch (e) {
-        console.warn('[Dashboard] Erreur réservations, fallback static', e);
-        reservationsData = RESERVATIONS_STATIC;
+        console.warn('[Dashboard] Erreur réservations:', e);
+        reservationsData = [];
       }
 
-      // Récupération des paiements
+      // 4. Récupérer les paiements
       let paiementsData: any[] = [];
       try {
         const paiementsRes = await api.get('/paiements');
         paiementsData = paiementsRes.data?.data ?? paiementsRes.data ?? [];
+        console.log(`📊 [Dashboard] ${paiementsData.length} paiements chargés`);
       } catch (e) {
-        console.warn('[Dashboard] Erreur paiements, fallback static', e);
-        paiementsData = PAIEMENTS_STATIC;
+        console.warn('[Dashboard] Erreur paiements:', e);
+        paiementsData = [];
       }
-      setPaiements((paiementsData.length > 0 ? paiementsData : PAIEMENTS_STATIC).map(normalizePaiement));
+      setPaiements(paiementsData.map(normalizePaiement));
 
-      // Normalisation des réservations avec les clients et chambres associés
-      const normalizedReservations = (reservationsData.length > 0 ? reservationsData : RESERVATIONS_STATIC)
-        .map((r: any) => {
-          // Associer le client depuis la liste des clients récupérés
-          const clientId = r?.clientId ?? r?.client_id ?? r?.client?.id;
-          const client = clientsData.find((c: Client) => c.id === clientId) || 
-                        normalizeClient(r?.client || {});
+      // 5. Normaliser les réservations avec clients et chambres associés
+      const normalizedReservations = reservationsData.map((r: any) => {
+        const clientId = r?.clientId ?? r?.client_id ?? r?.client?.id;
+        const client = clientsData.find((c: any) => c.id === clientId) || 
+                       normalizeClient(r?.client || {});
 
-          // Associer la chambre depuis la liste des chambres
-          const chambreId = r?.chambreId ?? r?.chambre_id ?? r?.chambre?.idChambre;
-          const chambre = chambresData.find((c: any) => (c.idChambre || c.id) === chambreId) || 
-                          normalizeChambre(r?.chambre || {});
+        const chambreId = r?.chambreId ?? r?.chambre_id ?? r?.chambre?.id;
+        const chambre = normalizedChambres.find((c: Chambre) => c.id === chambreId) || 
+                        normalizeChambre(r?.chambre || {});
 
-          return normalizeReservation({
-            ...r,
-            client,
-            chambre
-          });
+        return normalizeReservation({
+          ...r,
+          client,
+          chambre
         });
+      });
 
-      // Récupération des services annexes
-      const servicesByReservation = new Map<number, ServiceAnnexe[]>();
-      const addServiceToReservation = (reservationId: number | undefined, service: ServiceAnnexe) => {
-        if (!reservationId) return;
-        const list = servicesByReservation.get(reservationId) ?? [];
-        list.push(service);
-        servicesByReservation.set(reservationId, list);
-      };
-
-      try {
-        const locationsRes = await api.get('/services-annexes/velos/locations-en-cours');
-        const locations = locationsRes.data?.data ?? locationsRes.data ?? [];
-        locations.forEach((item: any) => {
-          addServiceToReservation(
-            item?.reservationId ?? item?.reservation_id ?? item?.reservation?.id,
-            normalizeBikeService(item)
-          );
-        });
-      } catch (e) { /* ignore */ }
-
-      try {
-        const transfertsRes = await api.get('/services-annexes/transferts');
-        const transferts = transfertsRes.data?.data ?? transfertsRes.data ?? [];
-        transferts.forEach((item: any) => {
-          addServiceToReservation(
-            item?.reservationId ?? item?.reservation_id ?? item?.reservation?.id,
-            normalizeTransferService(item)
-          );
-        });
-      } catch (e) { /* ignore */ }
-
-      try {
-        const activitesRes = await api.get('/services-annexes/activites/reservations-externes');
-        const activites = activitesRes.data?.data ?? activitesRes.data ?? [];
-        activites.forEach((item: any) => {
-          addServiceToReservation(
-            item?.reservationId ?? item?.reservation_id ?? item?.reservation?.id,
-            normalizeActivityService(item)
-          );
-        });
-      } catch (e) { /* ignore */ }
-
-      // Appliquer les services aux réservations
-      setReservations(normalizedReservations.map((reservation: Reservation) => ({
-        ...reservation,
-        servicesAnnexes: servicesByReservation.get(reservation.idReservation) ?? reservation.servicesAnnexes ?? []
-      })));
+      setReservations(normalizedReservations);
+      setLastRefresh(new Date());
+      console.log('✅ [Dashboard] Toutes les données chargées avec succès');
 
     } catch (error) {
-      console.error('Erreur chargement dashboard:', error);
-      toast.error('Erreur lors du chargement des données, utilisation des données statiques');
-      setClients(CLIENTS_STATIC);
-      setReservations(RESERVATIONS_STATIC);
-      setChambres(CHAMBRES_STATIC);
-      setPaiements(PAIEMENTS_STATIC);
+      console.error('[Dashboard] Erreur chargement:', error);
+      toast.error('Erreur lors du chargement des données');
     } finally {
       setLoading(false);
-      setLoadingChambres(false);
+      isFetching.current = false;
     }
   }, []);
 
-  useEffect(() => {
-    fetchDashboardData();
-  }, [fetchDashboardData]);
+  // ─── WEBSOCKET ──────────────────────────────────────────────────────────────────
 
-  // ─── Calculs ──────────────────────────────────────────────────────────────────
+  useEffect(() => {
+    // ✅ S'abonner aux canaux via la fonction subscribe
+    if (isConnected && subscribe) {
+      subscribe('dashboard');
+      subscribe('reservations');
+      subscribe('chambres');
+      subscribe('paiements');
+    }
+
+    // ✅ Écouter les événements DOM (fallback)
+    const handleRefresh = () => {
+      console.log('🔄 [Dashboard] Refresh event received');
+      fetchDashboardData();
+    };
+
+    window.addEventListener('refresh-dashboard', handleRefresh);
+    window.addEventListener('chambre-updated', handleRefresh);
+    window.addEventListener('reservation-created', handleRefresh);
+    window.addEventListener('reservation-updated', handleRefresh);
+    window.addEventListener('reservation-cancelled', handleRefresh);
+
+    return () => {
+      window.removeEventListener('refresh-dashboard', handleRefresh);
+      window.removeEventListener('chambre-updated', handleRefresh);
+      window.removeEventListener('reservation-created', handleRefresh);
+      window.removeEventListener('reservation-updated', handleRefresh);
+      window.removeEventListener('reservation-cancelled', handleRefresh);
+    };
+  }, [subscribe, isConnected, fetchDashboardData]);
+
+  // ─── CHARGEMENT INITIAL ──────────────────────────────────────────────────────
+
+  useEffect(() => {
+    // Chargement initial
+    fetchDashboardData();
+
+    // Polling de secours toutes les 30 secondes
+    const interval = setInterval(() => {
+      if (!isConnected) {
+        fetchDashboardData();
+      }
+    }, 30000);
+
+    return () => clearInterval(interval);
+  }, [fetchDashboardData, isConnected]);
+
+  // ─── CALCULS ──────────────────────────────────────────────────────────────────
 
   const totalReservations = reservations.filter(r => r.statut !== 'ANNULEE').length;
   const totalRevenue = reservations.filter(r => r.statut !== 'ANNULEE').reduce((sum, r) => sum + (r.montantTotal || 0), 0);
-  const occupancyRate = chambres.length > 0 ? 
-    ((reservations.filter(r => r.statut === 'CONFIRMEE').length / chambres.length) * 100).toFixed(1) : '0';
+  const occupiedCount = chambres.filter(c => c.estOccupeeActuellement).length;
+  const occupancyRate = chambres.length > 0 ? ((occupiedCount / chambres.length) * 100).toFixed(1) : '0';
   const avgNights = totalReservations > 0 ? 
     reservations.filter(r => r.statut !== 'ANNULEE').reduce((sum, r) => sum + (r.nbNuits || 0), 0) / totalReservations : 0;
 
-  // ─── Handlers ─────────────────────────────────────────────────────────────────
+  // ─── HANDLERS ─────────────────────────────────────────────────────────────────
 
   const handleViewReservation = (id: number) => {
     navigate(`/reservations/${id}`);
-  };
-
-  const handleClientClick = (client: Client) => {
-    setSelectedClient(client);
-    setShowClientDetail(true);
   };
 
   const handleEditClient = (client: Client) => {
@@ -1681,18 +1470,22 @@ export default function DashboardPage() {
 
   const handleRefresh = () => {
     fetchDashboardData();
-    setLastRefresh(new Date());
+    if (isConnected && refreshDashboard) {
+      refreshDashboard();
+    }
     toast.success('Données rafraîchies');
   };
 
-  // ─── Rendu ────────────────────────────────────────────────────────────────────
+  // ─── RENDU ────────────────────────────────────────────────────────────────────
 
-  if (loading) {
+  // Afficher un loader pendant le chargement initial
+  if (loading && chambres.length === 0 && reservations.length === 0) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="flex flex-col items-center gap-4">
           <div className="w-12 h-12 border-4 border-emerald-200 border-t-emerald-600 rounded-full animate-spin" />
-          <p className="text-gray-900">Chargement du tableau de bord...</p>
+          <p className="text-gray-900 font-medium">Chargement du tableau de bord...</p>
+          <p className="text-gray-400 text-sm">Les Palmiers de l'Entre-Deux</p>
         </div>
       </div>
     );
@@ -1700,93 +1493,6 @@ export default function DashboardPage() {
 
   return (
     <div className="min-h-screen bg-gray-50 p-4 lg:p-6">
-      {/* STYLE: Force toutes les couleurs de texte en noir */}
-      <style>{`
-        .dashboard-force-black * {
-          color: #000000 !important;
-        }
-        .dashboard-force-black .text-gray-400,
-        .dashboard-force-black .text-gray-500,
-        .dashboard-force-black .text-gray-600,
-        .dashboard-force-black .text-gray-700 {
-          color: #000000 !important;
-        }
-        .dashboard-force-black .text-emerald-600,
-        .dashboard-force-black .text-emerald-700,
-        .dashboard-force-black .text-amber-600,
-        .dashboard-force-black .text-amber-700,
-        .dashboard-force-black .text-blue-600,
-        .dashboard-force-black .text-blue-700,
-        .dashboard-force-black .text-purple-600,
-        .dashboard-force-black .text-purple-700,
-        .dashboard-force-black .text-green-600,
-        .dashboard-force-black .text-green-700 {
-          color: #000000 !important;
-        }
-        .dashboard-force-black .text-white {
-          color: #ffffff !important;
-        }
-        .dashboard-force-black .text-yellow-700,
-        .dashboard-force-black .text-yellow-500 {
-          color: #000000 !important;
-        }
-        .dashboard-force-black .text-red-600,
-        .dashboard-force-black .text-red-700 {
-          color: #000000 !important;
-        }
-        .dashboard-force-black .fill-yellow-500 {
-          fill: #000000 !important;
-        }
-        .dashboard-force-black .bg-emerald-50,
-        .dashboard-force-black .bg-amber-50,
-        .dashboard-force-black .bg-blue-50,
-        .dashboard-force-black .bg-purple-50,
-        .dashboard-force-black .bg-green-50,
-        .dashboard-force-black .bg-yellow-50,
-        .dashboard-force-black .bg-red-50,
-        .dashboard-force-black .bg-gray-50 {
-          background-color: #f3f4f6 !important;
-        }
-        .dashboard-force-black .bg-emerald-100,
-        .dashboard-force-black .bg-amber-100,
-        .dashboard-force-black .bg-blue-100,
-        .dashboard-force-black .bg-purple-100,
-        .dashboard-force-black .bg-green-100,
-        .dashboard-force-black .bg-yellow-100,
-        .dashboard-force-black .bg-red-100,
-        .dashboard-force-black .bg-gray-100 {
-          background-color: #e5e7eb !important;
-        }
-        .dashboard-force-black .bg-emerald-500,
-        .dashboard-force-black .bg-blue-500,
-        .dashboard-force-black .bg-amber-500 {
-          background-color: #6b7280 !important;
-        }
-        .dashboard-force-black .border-emerald-200,
-        .dashboard-force-black .border-amber-200,
-        .dashboard-force-black .border-blue-200,
-        .dashboard-force-black .border-purple-200,
-        .dashboard-force-black .border-green-200,
-        .dashboard-force-black .border-yellow-200,
-        .dashboard-force-black .border-red-200,
-        .dashboard-force-black .border-gray-200 {
-          border-color: #d1d5db !important;
-        }
-        .dashboard-force-black button:not(.text-white),
-        .dashboard-force-black .btn:not(.text-white) {
-          color: #000000 !important;
-        }
-        .dashboard-force-black input,
-        .dashboard-force-black select,
-        .dashboard-force-black textarea {
-          color: #000000 !important;
-        }
-        .dashboard-force-black input::placeholder,
-        .dashboard-force-black textarea::placeholder {
-          color: #6b7280 !important;
-        }
-      `}</style>
-
       <div className="dashboard-force-black">
         {/* En-tête */}
         <motion.div
@@ -1805,9 +1511,23 @@ export default function DashboardPage() {
             </motion.span>
             <div>
               <h1 className="text-2xl font-bold text-gray-900">Tableau de bord</h1>
-              <p className="text-sm text-gray-500 mt-0.5">
-                Les Palmiers de l'Entre-Deux · <span className="text-xs">{lastRefresh.toLocaleTimeString('fr-FR')}</span>
-              </p>
+              <div className="flex items-center gap-3 text-sm text-gray-500 mt-0.5 flex-wrap">
+                <span>Les Palmiers de l'Entre-Deux</span>
+                <span className="w-1 h-1 rounded-full bg-gray-300" />
+                <span className="text-xs">{lastRefresh.toLocaleTimeString('fr-FR')}</span>
+                {isConnected ? (
+                  <span className="flex items-center gap-1 text-emerald-500 text-xs">
+                    <WifiIcon size={11} className="animate-pulse" /> Temps réel
+                  </span>
+                ) : (
+                  <span className="flex items-center gap-1 text-gray-400 text-xs">
+                    <WifiOff size={11} /> Hors ligne
+                  </span>
+                )}
+                {connectionError && (
+                  <span className="text-red-500 text-xs">⚠️ {connectionError}</span>
+                )}
+              </div>
             </div>
           </div>
           <motion.button
@@ -1833,11 +1553,11 @@ export default function DashboardPage() {
             value={`${occupancyRate}%`} 
             icon={<TrendingUp size={20} />} 
             color="emerald" 
-            subtitle={`${chambres.filter(c => c.statut === 'DISPONIBLE').length} chambres disponibles`} 
+            subtitle={`${chambres.filter(c => !c.estOccupeeActuellement).length} chambres disponibles`} 
           />
           <StatCard 
             label="Chiffre d'affaires" 
-            value={`${totalRevenue}€`} 
+            value={`${totalRevenue.toFixed(0)}€`} 
             icon={<Euro size={20} />} 
             color="amber" 
             trend={12.5} 
@@ -1860,7 +1580,7 @@ export default function DashboardPage() {
         {/* Arrivées/Départs + Chambres */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
           <div className="lg:col-span-2"><ArrivalsDeparturesSection reservations={reservations} /></div>
-          <div><RoomOccupancySection reservations={reservations} chambres={chambres} loading={loadingChambres} /></div>
+          <div><RoomOccupancySection chambres={chambres} loading={loadingChambres} /></div>
         </div>
 
         {/* Graphiques */}

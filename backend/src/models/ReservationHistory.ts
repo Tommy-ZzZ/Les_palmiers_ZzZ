@@ -1,3 +1,4 @@
+// backend/src/models/ReservationHistory.ts
 import { DataTypes, Model, Optional } from 'sequelize';
 import { sequelize } from '../config/database';
 

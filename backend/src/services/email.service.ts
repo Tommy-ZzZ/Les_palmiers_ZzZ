@@ -23,9 +23,6 @@ export class EmailService {
 
   // ─── METHODES PRINCIPALES D'ENVOI ──────────────────────────────────────────
 
-  /**
-   * Envoyer un email avec OVH
-   */
   async envoyerViaOVH(to: string, subject: string, html: string): Promise<{ success: boolean; error?: string }> {
     try {
       await this.transporter.sendMail({
@@ -41,9 +38,6 @@ export class EmailService {
     }
   }
 
-  /**
-   * Envoyer email avec enregistrement en base
-   */
   async envoyerEmailAvecHistorique(
     to: string,
     subject: string,
@@ -77,9 +71,6 @@ export class EmailService {
 
   // ─── CDC §3.6.1 : EMAILS AUTOMATIQUES ──────────────────────────────────────
 
-  /**
-   * Envoyer email de confirmation (CDC section 3.6.1)
-   */
   async envoyerConfirmation(reservationId: number) {
     try {
       const reservation = await Reservation.findByPk(reservationId, {
@@ -131,9 +122,6 @@ export class EmailService {
     }
   }
 
-  /**
-   * Envoyer email de rappel J-7 (CDC section 3.6.1)
-   */
   async envoyerRappel(reservationId: number) {
     try {
       const reservation = await Reservation.findByPk(reservationId, {
@@ -173,9 +161,6 @@ export class EmailService {
     }
   }
 
-  /**
-   * Envoyer email de remerciement J+2 (CDC section 3.6.1)
-   */
   async envoyerRemerciement(reservationId: number) {
     try {
       const reservation = await Reservation.findByPk(reservationId, {
@@ -215,9 +200,6 @@ export class EmailService {
     }
   }
 
-  /**
-   * Envoyer email d'annulation (CDC section 3.6.1)
-   */
   async envoyerAnnulation(reservationId: number, penalite: number = 0) {
     try {
       const reservation = await Reservation.findByPk(reservationId, {
@@ -262,9 +244,6 @@ export class EmailService {
     }
   }
 
-  /**
-   * Envoyer email de relance paiement (CDC section 3.4.2)
-   */
   async envoyerRelancePaiement(reservationId: number) {
     try {
       const reservation = await Reservation.findByPk(reservationId, {
@@ -317,7 +296,6 @@ export class EmailService {
     const nbNuits = Math.ceil((depart.getTime() - arrivee.getTime()) / (1000 * 60 * 60 * 24));
 
     return {
-      // Client
       client_prenom: reservation.client?.prenom || '',
       client_nom: reservation.client?.nom || '',
       client_email: reservation.client?.email || '',
@@ -325,13 +303,11 @@ export class EmailService {
       prenom: reservation.client?.prenom || '',
       nom: reservation.client?.nom || '',
 
-      // Gîte
       nom_gite: "Les Palmiers de l'Entre-Deux",
       adresse_gite: "12 Rue des Palmiers, 97440 L'Entre-Deux",
       telephone_gite: "0262 12 34 56",
       email_gite: "contact@lespalmiers-reunion.re",
 
-      // Réservation
       date_arrivee: arrivee.toLocaleDateString('fr-FR'),
       date_depart: depart.toLocaleDateString('fr-FR'),
       numero_reservation: reservation.numero || '',
@@ -343,7 +319,6 @@ export class EmailService {
       nb_nuits: nbNuits,
       numero: reservation.numero || '',
 
-      // Chambre
       chambre_nom: reservation.chambre?.nom || '',
       chambre_numero: reservation.chambre?.numero || '',
       chambre: reservation.chambre?.nom || '',
@@ -360,9 +335,6 @@ export class EmailService {
 
   // ─── CRON JOBS ───────────────────────────────────────────────────────────────
 
-  /**
-   * Envoyer les rappels J-7 à 9h00
-   */
   async envoyerRappelsJMoins7() {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
@@ -389,9 +361,6 @@ export class EmailService {
     }
   }
 
-  /**
-   * Envoyer les remerciements J+2 à 10h00
-   */
   async envoyerRemerciementsJPlus2() {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
@@ -418,22 +387,19 @@ export class EmailService {
     }
   }
 
-  /**
-   * Vérifier les impayés et envoyer des alertes
-   */
   async marquerImpayes() {
     const reservations = await Reservation.findAll({
       where: {
-        statut: ['CONFIRMEE', 'EN_ATTENTE_ACOMPTE'],
-        montant_restant_du: { [Op.gt]: 0 }
+        statut: ['CONFIRMEE', 'EN_ATTENTE_ACOMPTE']
       },
       include: [{ model: Client, as: 'client' }]
     });
 
-    console.log(`[CRON] ${reservations.length} réservations avec impayés`);
+    const impayes = reservations.filter(r => r.montantRestantDu > 0);
 
-    for (const reservation of reservations) {
-      // Envoyer une relance si le paiement est en retard
+    console.log(`[CRON] ${impayes.length} réservations avec impayés`);
+
+    for (const reservation of impayes) {
       const arrivee = new Date(reservation.dateArrivee);
       const today = new Date();
       const daysBeforeArrival = Math.ceil((arrivee.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
@@ -446,28 +412,22 @@ export class EmailService {
 
   // ─── SUBSTITUTION AVEC OBJET COMPLET ──────────────────────────────────────
 
-  /**
-   * Substitution de variables avec un objet complet (pour le contrôleur)
-   */
   substituerVariables(template: string, data: { client: Client; reservationId?: number; reservation?: Reservation }): string {
     const client = data.client;
     const reservation = data.reservation || null;
 
     let result = template;
 
-    // Variables client
     result = result.replace(/{{client_prenom}}/g, client?.prenom || '');
     result = result.replace(/{{client_nom}}/g, client?.nom || '');
     result = result.replace(/{{client_email}}/g, client?.email || '');
     result = result.replace(/{{client_telephone}}/g, client?.telephone || '');
 
-    // Variables gîte
     result = result.replace(/{{nom_gite}}/g, "Les Palmiers de l'Entre-Deux");
     result = result.replace(/{{adresse_gite}}/g, "12 Rue des Palmiers, 97440 L'Entre-Deux");
     result = result.replace(/{{telephone_gite}}/g, "0262 12 34 56");
     result = result.replace(/{{email_gite}}/g, "contact@lespalmiers-reunion.re");
 
-    // Variables réservation
     if (reservation) {
       const arrivee = new Date(reservation.date_arrivee);
       const depart = new Date(reservation.date_depart);
@@ -490,10 +450,8 @@ export class EmailService {
       }
     }
 
-    // Conditions d'annulation
     result = result.replace(/{{conditions_annulation}}/g, "Annulation gratuite jusqu'à 7 jours avant l'arrivée, 50% entre 7 et 2 jours, 100% moins de 2 jours");
 
-    // Date limite paiement
     if (reservation) {
       const dateLimite = new Date(reservation.date_arrivee);
       dateLimite.setDate(dateLimite.getDate() - 7);
@@ -503,9 +461,6 @@ export class EmailService {
     return result;
   }
 
-  /**
-   * Envoyer un email avec le service (pour le contrôleur)
-   */
   async envoyerViaOVHSimple(params: { to: string; subject: string; html: string }) {
     return this.envoyerViaOVH(params.to, params.subject, params.html);
   }
@@ -515,7 +470,6 @@ export class EmailService {
 
 const emailService = new EmailService();
 
-// Exporter les fonctions pour les CRON jobs
 export const envoyerRappelsJMoins7 = () => emailService.envoyerRappelsJMoins7();
 export const envoyerRemerciementsJPlus2 = () => emailService.envoyerRemerciementsJPlus2();
 export const marquerImpayes = () => emailService.marquerImpayes();

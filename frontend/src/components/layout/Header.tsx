@@ -24,8 +24,7 @@ interface HeaderProps {
 }
 
 // ============================================================
-// Constantes & configuration statique (sorties du composant
-// pour éviter d'être recréées à chaque render)
+// Constantes & configuration statique
 // ============================================================
 
 const ROUTE_TITLES: Record<string, string> = {
@@ -73,13 +72,13 @@ const TYPE_EMOJIS: Record<string, string> = {
 const REFRESH_INTERVAL_MS = 30_000;
 const PING_INTERVAL_MS = 3_000;
 const PAGE_SIZE = 8;
-const TOAST_DURATION_MS = 6_000;
+const TOAST_DURATION_MS = 30; // ✅ 0.03s - les toasts disparaissent instantanément
 const DRAG_CLOSE_THRESHOLD_PX = 110;
 
 type GraviteFilter = GraviteNotification | 'all';
 
 // ============================================================
-// Helpers purs (pas de state, faciles à tester isolément)
+// Helpers purs
 // ============================================================
 
 function resolvePageTitle(pathname: string): string {
@@ -173,7 +172,6 @@ function useNetworkStatus() {
 
 // ============================================================
 // Hook: cycle de rafraîchissement des notifications
-// (focus, intervalle, ouverture du panneau)
 // ============================================================
 
 function useNotificationsPanel(forceRefresh: () => void) {
@@ -229,39 +227,84 @@ function useClickOutside<T extends HTMLElement>(isActive: boolean, onOutsideClic
 
 // ============================================================
 // Hook: détecte les nouvelles notifications pour afficher un toast
-// discret quand le panneau est fermé
+// ✅ CORRECTION : Les toasts disparaissent immédiatement et 
+// ne réapparaissent pas après un refresh
 // ============================================================
 
 function useNewNotificationToasts(notifications: NotificationApi[], isPanelOpen: boolean) {
   const [toasts, setToasts] = useState<NotificationApi[]>([]);
-  const seenIdsRef = useRef<Set<string> | null>(null);
+  const seenIdsRef = useRef<Set<string>>(new Set());
+  const isInitialLoadRef = useRef(true);
 
   useEffect(() => {
-    // Premier passage : on mémorise l'existant sans rien notifier.
-    if (seenIdsRef.current === null) {
-      seenIdsRef.current = new Set(notifications.map((n) => n.id));
+    // ✅ Si c'est le premier chargement, on mémorise toutes les notifications existantes
+    if (isInitialLoadRef.current) {
+      // Marquer toutes les notifications comme "vues" au premier chargement
+      notifications.forEach((n) => seenIdsRef.current.add(n.id));
+      isInitialLoadRef.current = false;
+      
+      // ✅ VIDER LES TOASTS AU PREMIER CHARGEMENT
+      setToasts([]);
+      return;
+    }
+
+    // Si le panneau est ouvert, on marque tout comme vu
+    if (isPanelOpen) {
+      notifications.forEach((n) => seenIdsRef.current.add(n.id));
+      setToasts([]);
       return;
     }
 
     const seenIds = seenIdsRef.current;
 
-    if (isPanelOpen) {
-      notifications.forEach((n) => seenIds.add(n.id));
-      return;
-    }
+    // ✅ Filtrer les nouvelles notifications NON LUE et pas encore vues
+    const nouvelles = notifications.filter((n) => {
+      // Ne pas afficher les notifications déjà lues
+      if (n.lu) return false;
+      // Ne pas afficher les notifications déjà vues
+      if (seenIds.has(n.id)) return false;
+      return true;
+    });
 
-    const nouvelles = notifications.filter((n) => !n.lu && !seenIds.has(n.id));
+    // ✅ Marquer immédiatement comme vues pour éviter les doublons
+    nouvelles.forEach((n) => seenIds.add(n.id));
+
+    // ✅ Ajouter les nouvelles notifications aux toasts
     if (nouvelles.length > 0) {
-      nouvelles.forEach((n) => seenIds.add(n.id));
-      setToasts((prev) => [...nouvelles, ...prev].slice(0, 3));
+      setToasts((prev) => {
+        // Fusionner avec les toasts existants sans doublon
+        const existingIds = new Set(prev.map((t) => t.id));
+        const toAdd = nouvelles.filter((n) => !existingIds.has(n.id));
+        return [...toAdd, ...prev].slice(0, 5);
+      });
     }
   }, [notifications, isPanelOpen]);
 
-  const dismiss = useCallback((id: string) => {
-    setToasts((prev) => prev.filter((t) => t.id !== id));
+  // ✅ Nettoyer automatiquement les toasts après un court délai (0.03s)
+  useEffect(() => {
+    if (toasts.length === 0) return;
+
+    const timer = setTimeout(() => {
+      setToasts([]);
+    }, TOAST_DURATION_MS);
+
+    return () => clearTimeout(timer);
+  }, [toasts]);
+
+  // ✅ Fonction pour vider manuellement les toasts
+  const dismissAll = useCallback(() => {
+    setToasts([]);
   }, []);
 
-  return { toasts, dismiss };
+  const dismiss = useCallback((id: string) => {
+    setToasts((prev) => {
+      // Marquer comme vu pour ne pas réapparaître
+      seenIdsRef.current.add(id);
+      return prev.filter((t) => t.id !== id);
+    });
+  }, []);
+
+  return { toasts, dismiss, dismissAll };
 }
 
 // ============================================================
@@ -647,8 +690,12 @@ function NotificationToast({
 }) {
   const style = GRAVITE_STYLES[notification.gravite];
 
+  // ✅ Auto-dismiss après TOAST_DURATION_MS (30ms)
   useEffect(() => {
-    const timer = setTimeout(() => onDismiss(notification.id), TOAST_DURATION_MS);
+    const timer = setTimeout(() => {
+      onDismiss(notification.id);
+    }, TOAST_DURATION_MS);
+
     return () => clearTimeout(timer);
   }, [notification.id, onDismiss]);
 

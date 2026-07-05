@@ -1,5 +1,6 @@
 // backend/src/models/Notification.ts
-import { DataTypes, Model, Optional, Sequelize } from 'sequelize';
+import { DataTypes, Model, Optional } from 'sequelize';
+import { sequelize } from '../config/database';
 
 export type TypeNotification =
   | 'ACOMPTE_MANQUANT'
@@ -46,80 +47,85 @@ class Notification
   public readonly updatedAt!: Date;
 }
 
-// ✅ Fonction d'initialisation différée
-export function initNotification(sequelize: Sequelize): typeof Notification {
-  Notification.init(
-    {
-      id: {
-        type: DataTypes.INTEGER,
-        autoIncrement: true,
-        primaryKey: true,
-      },
-      type: {
-        type: DataTypes.ENUM(
-          'ACOMPTE_MANQUANT',
-          'CONFIRMATION_ATTENTE',
-          'IMPAYE',
-          'ARRIVEE_JOUR',
-          'CHECKIN_RETARDE'
-        ),
-        allowNull: false,
-      },
-      titre: {
-        type: DataTypes.STRING(255),
-        allowNull: false,
-      },
-      message: {
-        type: DataTypes.STRING(255),
-        allowNull: false,
-      },
-      gravite: {
-        type: DataTypes.ENUM('info', 'success', 'warning', 'error'),
-        allowNull: false,
-        defaultValue: 'info',
-      },
-      lu: {
-        type: DataTypes.BOOLEAN,
-        allowNull: false,
-        defaultValue: false,
-      },
-      reservationId: {
-        type: DataTypes.INTEGER,
-        allowNull: true,
-      },
-      clientId: {
-        type: DataTypes.INTEGER,
-        allowNull: true,
-      },
-      cleUnique: {
-        type: DataTypes.STRING(255),
-        allowNull: false,
-        unique: true,
-      },
-      createdAt: {
-        type: DataTypes.DATE,
-        allowNull: false,
-        defaultValue: DataTypes.NOW,
-        field: 'created_at',
-      },
-      updatedAt: {
-        type: DataTypes.DATE,
-        allowNull: false,
-        defaultValue: DataTypes.NOW,
-        field: 'updated_at',
-      },
+// ✅ Initialisation avec sequelize
+Notification.init(
+  {
+    id: {
+      type: DataTypes.INTEGER,
+      autoIncrement: true,
+      primaryKey: true,
     },
-    {
-      sequelize,
-      tableName: 'notifications',
-      timestamps: true,
-      createdAt: 'created_at',
-      updatedAt: 'updated_at',
+    type: {
+      type: DataTypes.ENUM(
+        'ACOMPTE_MANQUANT',
+        'CONFIRMATION_ATTENTE',
+        'IMPAYE',
+        'ARRIVEE_JOUR',
+        'CHECKIN_RETARDE'
+      ),
+      allowNull: false,
+    },
+    titre: {
+      type: DataTypes.STRING(255),
+      allowNull: false,
+    },
+    message: {
+      type: DataTypes.STRING(255),
+      allowNull: false,
+    },
+    gravite: {
+      type: DataTypes.ENUM('info', 'success', 'warning', 'error'),
+      allowNull: false,
+      defaultValue: 'info',
+    },
+    lu: {
+      type: DataTypes.BOOLEAN,
+      allowNull: false,
+      defaultValue: false,
+    },
+    reservationId: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+      field: 'reservation_id',
+    },
+    clientId: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+      field: 'client_id',
+    },
+    cleUnique: {
+      type: DataTypes.STRING(255),
+      allowNull: false,
+      unique: true,
+      field: 'cle_unique',
+    },
+    createdAt: {
+      type: DataTypes.DATE,
+      allowNull: false,
+      defaultValue: DataTypes.NOW,
+      field: 'created_at',
+    },
+    updatedAt: {
+      type: DataTypes.DATE,
+      allowNull: false,
+      defaultValue: DataTypes.NOW,
+      field: 'updated_at',
+    },
+  },
+  {
+    sequelize,
+    tableName: 'notifications',
+    timestamps: true,
+    createdAt: 'created_at',
+    updatedAt: 'updated_at',
+    hooks: {
+      beforeCreate: (notification: any) => {
+        if (!notification.cleUnique) {
+          notification.cleUnique = `${notification.type}-${notification.reservationId || 'global'}-${new Date().toISOString().slice(0, 10)}`;
+        }
+      }
     }
-  );
-
-  return Notification;
-}
-
+  }
+);
 
 export default Notification;

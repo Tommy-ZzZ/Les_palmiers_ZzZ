@@ -1,11 +1,111 @@
+// backend/src/controllers/paiements.controller.ts
 import { Request, Response } from 'express';
 import { Op } from 'sequelize';
 import { Payment, Reservation, Invoice, Client, Room } from '../models';
+import { StatutReservation, StatutPaiement } from '../models/Reservation';
+import { WebSocketManager } from '../websocket/server';
 
 export class PaiementsController {
   /**
-   * Récupérer tous les paiements
+   * Synchroniser le statut d'une chambre
    */
+  private async synchroniserStatutChambre(chambreId: number): Promise<void> {
+    try {
+      const chambre = await Room.findByPk(chambreId);
+      if (!chambre) return;
+
+      if (
+        chambre.statut === 'EN_MAINTENANCE' ||
+        chambre.statut === 'HORS_SERVICE' ||
+        chambre.statut === 'BLOQUEE'
+      ) {
+        return;
+      }
+
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+
+      const reservationActive = await Reservation.count({
+        where: {
+          chambreId,
+          statut: { [Op.in]: ['CONFIRMEE', 'EN_ATTENTE_ACOMPTE'] },
+          dateArrivee: { [Op.lte]: today },
+          dateDepart: { [Op.gt]: today }
+        }
+      });
+
+      const nouveauStatut = reservationActive > 0 ? 'OCCUPEE' : 'DISPONIBLE';
+      if (chambre.statut !== nouveauStatut) {
+        await chambre.update({ statut: nouveauStatut });
+        console.log(`🔄 [sync] Chambre ${chambreId}: ${chambre.statut} → ${nouveauStatut}`);
+      }
+    } catch (error) {
+      console.error('❌ Erreur synchroniserStatutChambre:', error);
+    }
+  }
+
+  /**
+   * Mettre à jour le statut de paiement d'une réservation
+   * ✅ CORRECTION : Paiement complet → CONFIRMEE
+   */
+  private async updateReservationPaymentStatus(reservationId: number) {
+    try {
+      const paiements = await Payment.findAll({ 
+        where: { reservationId } 
+      });
+      const totalPaye = paiements.reduce((sum, p) => sum + p.montant, 0);
+
+      const reservation = await Reservation.findByPk(reservationId);
+      if (!reservation) return;
+
+      const montantTotal = Number(reservation.montantTotal) || 0;
+      const montantRestantDu = Math.round((montantTotal - totalPaye) * 100) / 100;
+
+      let statutPaiement = StatutPaiement.ACOMPTE_EN_ATTENTE;
+      
+      if (totalPaye >= montantTotal) {
+        statutPaiement = StatutPaiement.SOLDE_COMPLET;
+      } else if (totalPaye >= Number(reservation.montantAcompte)) {
+        statutPaiement = StatutPaiement.ACOMPTE_RECU;
+      } else if (totalPaye > 0) {
+        statutPaiement = StatutPaiement.SOLDE_PARTIEL;
+      }
+
+      await reservation.update({ 
+        statutPaiement,
+        montantSolde: Math.round((montantTotal - Number(reservation.montantAcompte)) * 100) / 100
+      });
+
+      // ✅ Si paiement complet → réservation CONFIRMEE
+      if (statutPaiement === StatutPaiement.SOLDE_COMPLET && 
+          reservation.statut === StatutReservation.EN_ATTENTE_ACOMPTE) {
+        await reservation.update({ 
+          statut: StatutReservation.CONFIRMEE
+        });
+        await this.synchroniserStatutChambre(reservation.chambreId);
+        
+        const wsManager = WebSocketManager.getInstance();
+        wsManager.broadcastToAll({
+          type: 'RESERVATION_CONFIRMED',
+          data: {
+            reservationId: reservation.id,
+            chambreId: reservation.chambreId,
+            clientNom: reservation.client?.nom || '',
+            clientPrenom: reservation.client?.prenom || ''
+          },
+          timestamp: new Date().toISOString()
+        });
+        
+        console.log(`✅ [Paiement] Réservation ${reservation.numero} confirmée - paiement complet`);
+      }
+
+      console.log(`💰 [Paiement] Réservation ${reservation.numero}: ${totalPaye}€/${montantTotal}€ - Statut: ${statutPaiement}`);
+      
+    } catch (error) {
+      console.error('❌ Erreur updateReservationPaymentStatus:', error);
+    }
+  }
+
   async getAll(req: Request, res: Response) {
     try {
       const paiements = await Payment.findAll({
@@ -35,9 +135,6 @@ export class PaiementsController {
     }
   }
 
-  /**
-   * Récupérer les impayés (CDC section 3.4.2)
-   */
   async getImpayes(req: Request, res: Response) {
     try {
       const today = new Date();
@@ -74,9 +171,6 @@ export class PaiementsController {
     }
   }
 
-  /**
-   * Récupérer la trésorerie (CDC section 3.7.3)
-   */
   async getTresorerie(req: Request, res: Response) {
     try {
       const { mois, annee } = req.query;
@@ -86,7 +180,6 @@ export class PaiementsController {
       const startDate = new Date(year, month - 1, 1);
       const endDate = new Date(year, month, 0);
 
-      // Encaissements réalisés
       const paiements = await Payment.findAll({
         where: {
           datePaiement: {
@@ -97,7 +190,6 @@ export class PaiementsController {
 
       const encaissementsRealises = paiements.reduce((sum, p) => sum + p.montant, 0);
 
-      // Encaissements prévus (réservations à venir)
       const reservations = await Reservation.findAll({
         where: {
           dateArrivee: {
@@ -135,9 +227,6 @@ export class PaiementsController {
     }
   }
 
-  /**
-   * Récupérer les paiements d'une réservation
-   */
   async getByReservation(req: Request, res: Response) {
     try {
       const { reservationId } = req.params;
@@ -171,9 +260,6 @@ export class PaiementsController {
     }
   }
 
-  /**
-   * Récupérer un paiement par ID
-   */
   async getById(req: Request, res: Response) {
     try {
       const { id } = req.params;
@@ -210,9 +296,6 @@ export class PaiementsController {
     }
   }
 
-  /**
-   * Créer un paiement
-   */
   async create(req: Request, res: Response) {
     try {
       const { 
@@ -221,11 +304,22 @@ export class PaiementsController {
         modePaiement, 
         typePaiement, 
         reference, 
-        notes 
+        notes,
+        numeroCheque,
+        banqueEmettrice,
+        typeCarte,
+        numeroCarteMasque,
+        referenceVirement
       } = req.body;
       const userId = (req as any).user?.id;
 
-      const reservation = await Reservation.findByPk(reservationId);
+      const reservation = await Reservation.findByPk(reservationId, {
+        include: [
+          { model: Client, as: 'client' },
+          { model: Room, as: 'chambre' }
+        ]
+      });
+      
       if (!reservation) {
         return res.status(404).json({
           success: false,
@@ -233,20 +327,20 @@ export class PaiementsController {
         });
       }
 
-      // Vérifier que le montant ne dépasse pas le total
       const paiementsExistants = await Payment.findAll({
         where: { reservationId }
       });
       const totalPaye = paiementsExistants.reduce((sum, p) => sum + p.montant, 0);
 
-      if (totalPaye + montant > reservation.montantTotal) {
+      const montantTotal = Number(reservation.montantTotal) || 0;
+      if (totalPaye + montant > montantTotal) {
         return res.status(400).json({
           success: false,
-          message: `Le montant total des paiements ne peut pas dépasser ${reservation.montantTotal} €`
+          message: `Le montant total des paiements ne peut pas dépasser ${montantTotal} €`
         });
       }
 
-      const paiement = await Payment.create({
+      const paiementData: any = {
         reservationId,
         montant,
         modePaiement,
@@ -254,15 +348,47 @@ export class PaiementsController {
         reference,
         notes,
         enregistrePar: userId
-      });
+      };
 
-      // Mettre à jour le statut de paiement de la réservation
+      if (modePaiement === 'CHEQUE') {
+        paiementData.numeroCheque = numeroCheque;
+        paiementData.banqueEmettrice = banqueEmettrice;
+      }
+      if (modePaiement === 'CARTE') {
+        paiementData.typeCarte = typeCarte;
+        paiementData.numeroCarteMasque = numeroCarteMasque || '****';
+      }
+      if (modePaiement === 'VIREMENT') {
+        paiementData.referenceVirement = referenceVirement;
+        paiementData.banqueEmettrice = banqueEmettrice || '';
+      }
+
+      const paiement = await Payment.create(paiementData);
+
       await this.updateReservationPaymentStatus(reservationId);
+
+      const wsManager = WebSocketManager.getInstance();
+      wsManager.emitPaymentRecorded(reservationId, reservation.chambreId, paiement);
+
+      wsManager.broadcastToAll({
+        type: 'REFRESH_CHAMBRES',
+        data: { reason: 'payment_recorded', timestamp: new Date().toISOString() },
+        timestamp: new Date().toISOString()
+      });
 
       return res.status(201).json({
         success: true,
         message: 'Paiement enregistré avec succès',
-        data: paiement
+        data: {
+          paiement,
+          reservation: {
+            id: reservation.id,
+            numero: reservation.numero,
+            statut: reservation.statut,
+            statutPaiement: reservation.statutPaiement,
+            montantRestantDu: reservation.montantRestantDu
+          }
+        }
       });
     } catch (error) {
       console.error('Erreur create paiement:', error);
@@ -273,9 +399,6 @@ export class PaiementsController {
     }
   }
 
-  /**
-   * Générer une facture (CDC section 8.3)
-   */
   async generateFacture(req: Request, res: Response) {
     try {
       const { reservationId } = req.params;
@@ -295,7 +418,6 @@ export class PaiementsController {
         });
       }
 
-      // Vérifier si une facture existe déjà
       const existingFacture = await Invoice.findOne({ 
         where: { reservationId } 
       });
@@ -307,7 +429,6 @@ export class PaiementsController {
         });
       }
 
-      // Générer le numéro de facture
       const count = await Invoice.count();
       const numero = `FAC-${new Date().getFullYear()}-${String(count + 1).padStart(5, '0')}`;
 
@@ -335,9 +456,6 @@ export class PaiementsController {
     }
   }
 
-  /**
-   * Récupérer une facture
-   */
   async getFacture(req: Request, res: Response) {
     try {
       const { reservationId } = req.params;
@@ -376,9 +494,6 @@ export class PaiementsController {
     }
   }
 
-  /**
-   * Alerter les impayés (CDC section 3.4.2)
-   */
   async alerterImpayes(req: Request, res: Response) {
     try {
       const today = new Date();
@@ -401,9 +516,6 @@ export class PaiementsController {
         ]
       });
 
-      // Ici, on pourrait envoyer des emails de relance
-      // Pour l'instant, on retourne juste la liste
-
       return res.status(200).json({
         success: true,
         message: `${reservations.length} réservations avec impayés`,
@@ -417,33 +529,6 @@ export class PaiementsController {
       });
     }
   }
-
-  /**
-   * Mettre à jour le statut de paiement d'une réservation
-   */
-  private async updateReservationPaymentStatus(reservationId: number) {
-    try {
-      const paiements = await Payment.findAll({ 
-        where: { reservationId } 
-      });
-      const totalPaye = paiements.reduce((sum, p) => sum + p.montant, 0);
-
-      const reservation = await Reservation.findByPk(reservationId);
-      if (!reservation) return;
-
-      let statutPaiement = 'ACOMPTE_EN_ATTENTE';
-      
-      if (totalPaye >= reservation.montantTotal) {
-        statutPaiement = 'SOLDE_COMPLET';
-      } else if (totalPaye >= reservation.montantAcompte) {
-        statutPaiement = 'ACOMPTE_RECU';
-      } else if (totalPaye > 0) {
-        statutPaiement = 'SOLDE_PARTIEL';
-      }
-
-      await reservation.update({ statutPaiement });
-    } catch (error) {
-      console.error('Erreur updateReservationPaymentStatus:', error);
-    }
-  }
 }
+
+export default new PaiementsController();

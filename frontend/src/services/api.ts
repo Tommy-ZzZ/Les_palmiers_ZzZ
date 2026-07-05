@@ -297,7 +297,7 @@ export const clientService = {
 };
 
 // ============================================
-// SERVICES - PAIEMENTS
+// SERVICES - PAIEMENTS (✅ CORRIGÉ)
 // ============================================
 
 export const paiementService = {
@@ -339,6 +339,7 @@ export const paiementService = {
     return response.data;
   },
 
+  // ✅ CORRECTION: Ajout des champs spécifiques pour chaque mode de paiement
   async create(data: {
     reservationId: number;
     montant: number;
@@ -346,6 +347,11 @@ export const paiementService = {
     typePaiement: string;
     reference?: string;
     notes?: string;
+    numeroCheque?: string;
+    banqueEmettrice?: string;
+    typeCarte?: string;
+    numeroCarteMasque?: string;
+    referenceVirement?: string;
   }) {
     const response = await api.post('/paiements', data);
     // ✅ Rafraîchir les notifications après un paiement

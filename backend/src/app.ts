@@ -6,6 +6,7 @@ import morgan from 'morgan';
 import rateLimit from 'express-rate-limit';
 import cron from 'node-cron';
 import dotenv from 'dotenv';
+import http from 'http';
 
 // ✅ Import des routes
 import authRoutes from './routes/auth.routes';
@@ -16,7 +17,6 @@ import paiementsRoutes from './routes/paiements.routes';
 import adminRoutes from './routes/admin.routes';
 import servicesAnnexesRoutes from './routes/services-annexes.routes';
 import communicationRoutes from './routes/communication.routes';
-// ⬅️ NOUVEAU - Routes notifications
 import notificationRoutes from './routes/notification.routes';
 
 // ✅ Import des services
@@ -26,18 +26,19 @@ import {
   marquerImpayes
 } from './services/email.service';
 
-// ✅ Import des modèles pour initialisation (Notification est déjà inclus dans models/index.ts)
+// ✅ Import des modèles
 import './models';
 
 // ✅ Import de la base de données
 import { initDatabase, sequelize } from './config/database';
 
-// ⚠️ SUPPRIMEZ cette ligne car Notification est déjà importé via './models'
-// import './models/Notification';
+// ✅ Import du WebSocket
+import { WebSocketManager } from './websocket/server';
 
 dotenv.config();
 
 const app = express();
+const server = http.createServer(app);
 const PORT = process.env.PORT || 3001;
 
 // ========================
@@ -76,6 +77,18 @@ const loginLimiter = rateLimit({
 });
 
 // ========================
+// INITIALISATION WEBSOCKET
+// ========================
+
+const wsManager = WebSocketManager.getInstance(server);
+
+// ✅ Middleware pour injecter wsManager dans les controllers
+app.use((req, res, next) => {
+  (req as any).wsManager = wsManager;
+  next();
+});
+
+// ========================
 // ROUTES
 // ========================
 
@@ -93,7 +106,7 @@ app.use('/api/services-annexes', servicesAnnexesRoutes);
 // ✅ Routes communication (§3.6)
 app.use('/api/communication', communicationRoutes);
 
-// ⬅️ NOUVEAU - Routes notifications (§3.4.2)
+// ✅ Routes notifications (§3.4.2)
 app.use('/api/notifications', notificationRoutes);
 
 // ========================
@@ -106,7 +119,8 @@ app.get('/api/health', (_, res) => {
     success: true,
     message: '🌴 Les Palmiers API — opérationnelle',
     timestamp: new Date(),
-    version: '1.0.0'
+    version: '1.0.0',
+    wsClients: wsManager.getConnectedClients()
   });
 });
 
@@ -126,7 +140,11 @@ app.get('/', (_, res) => {
       admin: '/api/admin',
       services: '/api/services-annexes',
       communication: '/api/communication',
-      notifications: '/api/notifications' // ⬅️ AJOUTÉ
+      notifications: '/api/notifications'
+    },
+    websocket: {
+      url: `ws://localhost:${PORT}/ws`,
+      clients: wsManager.getConnectedClients()
     }
   });
 });
@@ -202,11 +220,12 @@ const startServer = async () => {
     await initDatabase(forceSync);
 
     // ✅ Démarrage du serveur
-    app.listen(PORT, () => {
+    server.listen(PORT, () => {
       console.log(`\n${'='.repeat(60)}`);
       console.log(`🌴 Les Palmiers API démarrée avec succès !`);
       console.log(`${'='.repeat(60)}`);
       console.log(`   📍 URL        : http://localhost:${PORT}`);
+      console.log(`   🔌 WebSocket  : ws://localhost:${PORT}/ws`);
       console.log(`   🌍 Environnement : ${process.env.NODE_ENV || 'development'}`);
       console.log(`   🔗 CORS origin  : ${process.env.CORS_ORIGIN || 'http://localhost:5173'}`);
       console.log(`   📊 Base de données : ${process.env.DB_NAME || 'les_palmiers_db'}`);
@@ -224,10 +243,11 @@ const startServer = async () => {
       console.log('   📊 ADMIN       → /api/admin');
       console.log('   🚲 SERVICES    → /api/services-annexes');
       console.log('   📧 COMMUNICATION → /api/communication');
-      console.log('   🔔 NOTIFICATIONS → /api/notifications'); // ⬅️ AJOUTÉ
+      console.log('   🔔 NOTIFICATIONS → /api/notifications');
       console.log('   ❤️ HEALTH      → /api/health');
       console.log(`   ${'─'.repeat(50)}\n`);
 
+      console.log(`🔌 Clients WebSocket connectés: ${wsManager.getConnectedClients()}`);
       console.log('💡 Serveur en cours d\'exécution\n');
     });
 
@@ -273,4 +293,4 @@ process.on('SIGTERM', async () => {
 
 startServer();
 
-export default app;
+export { app, server, wsManager };

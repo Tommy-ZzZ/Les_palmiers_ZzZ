@@ -43,7 +43,6 @@ async function cleanAllDuplicateIndexes() {
 
     console.log('🧹 Nettoyage complet des index sur reservations...');
 
-    // 1. Vérifier combien d'index existent
     const [countResult] = await sequelize.query(`
       SELECT COUNT(*) as count 
       FROM pg_indexes 
@@ -60,7 +59,6 @@ async function cleanAllDuplicateIndexes() {
 
     console.log(`📊 ${indexCount} index trouvés sur la colonne 'numero' - Nettoyage en cours...`);
 
-    // 2. Récupérer tous les index
     const [indexes] = await sequelize.query(`
       SELECT indexname 
       FROM pg_indexes 
@@ -69,26 +67,21 @@ async function cleanAllDuplicateIndexes() {
       ORDER BY indexname
     `);
 
-    // 3. Supprimer tous les index
     let deleted = 0;
     let errors = 0;
     
     for (const row of indexes) {
       const indexName = row.indexname;
       try {
-        // Tenter de supprimer l'index directement
         await sequelize.query(`DROP INDEX IF EXISTS "${indexName}"`);
         deleted++;
         console.log(`   ✅ Index supprimé: ${indexName}`);
       } catch (err: any) {
-        // Si l'index est lié à une contrainte, on essaie de supprimer la contrainte d'abord
         if (err.message?.includes('requis par contrainte') || err.code === '2BP01') {
           try {
-            // Supprimer la contrainte associée
             await sequelize.query(`ALTER TABLE reservations DROP CONSTRAINT IF EXISTS "${indexName}"`);
             console.log(`   ✅ Contrainte supprimée: ${indexName}`);
             
-            // Maintenant supprimer l'index
             await sequelize.query(`DROP INDEX IF EXISTS "${indexName}"`);
             deleted++;
             console.log(`   ✅ Index supprimé: ${indexName}`);
@@ -103,7 +96,6 @@ async function cleanAllDuplicateIndexes() {
       }
     }
 
-    // 4. Recréer UN SEUL index UNIQUE
     if (deleted > 0) {
       try {
         await sequelize.query(`
@@ -115,7 +107,6 @@ async function cleanAllDuplicateIndexes() {
       }
     }
 
-    // 5. Vérification finale
     const [finalCount] = await sequelize.query(`
       SELECT COUNT(*) as count 
       FROM pg_indexes 
@@ -149,8 +140,6 @@ async function cleanAllDuplicateIndexes() {
 
 /**
  * ✅ Nettoie automatiquement les index en double sur la table reservations
- * ⚠️ NE SUPPRIME PAS LES DONNÉES, seulement les index redondants
- * ⚠️ Ne supprime PAS les index UNIQUE car ils sont liés à des contraintes
  */
 async function cleanDuplicateIndexes() {
   try {
@@ -162,10 +151,8 @@ async function cleanDuplicateIndexes() {
 
     console.log('🔍 Vérification des index en double sur reservations...');
 
-    // Récupérer tous les index de la table reservations
     const indexes = await sequelize.getQueryInterface().showIndex('reservations');
     
-    // Filtrer les index sur la colonne 'numero'
     const numeroIndexes = indexes.filter(idx => 
       idx.fields && idx.fields.some(f => f.attribute === 'numero')
     );
@@ -175,7 +162,6 @@ async function cleanDuplicateIndexes() {
       return;
     }
 
-    // Séparer les index UNIQUE (avec contrainte) et les index normaux
     const uniqueIndexes = numeroIndexes.filter(idx => idx.unique === true);
     const nonUniqueIndexes = numeroIndexes.filter(idx => idx.unique !== true);
 
@@ -188,7 +174,6 @@ async function cleanDuplicateIndexes() {
       return;
     }
 
-    // Supprimer UNIQUEMENT les index non-UNIQUE (ceux qui ne sont pas liés à une contrainte)
     let droppedCount = 0;
     for (const idx of nonUniqueIndexes) {
       try {
@@ -196,7 +181,6 @@ async function cleanDuplicateIndexes() {
         droppedCount++;
         console.log(`   ✅ Index supprimé : ${idx.name}`);
       } catch (err: any) {
-        // Si l'index est lié à une contrainte, on le saute
         if (err.code === '2BP01' || err.message?.includes('requis par contrainte')) {
           console.log(`   ⚠️ Index ${idx.name} lié à une contrainte, ignoré.`);
         } else {
@@ -209,6 +193,64 @@ async function cleanDuplicateIndexes() {
 
   } catch (error) {
     console.error('⚠️ Erreur lors du nettoyage des index:', error);
+    console.log('ℹ️ Le nettoyage sera réessayé au prochain démarrage.');
+  }
+}
+
+/**
+ * ✅ NOUVEAU : Nettoie les contraintes UNIQUE en double sur notifications.cle_unique
+ * Sequelize (via alter: true) peut recréer une contrainte UNIQUE en double
+ * à chaque redémarrage à chaud (nodemon) s'il ne détecte pas correctement
+ * celle déjà existante. Cette fonction garde une seule contrainte.
+ * ⚠️ NE SUPPRIME AUCUNE DONNÉE
+ */
+async function cleanDuplicateNotificationConstraints() {
+  try {
+    const tables = await sequelize.getQueryInterface().showAllTables();
+    if (!tables.includes('notifications')) {
+      console.log('ℹ️ Table notifications n\'existe pas encore, skip nettoyage...');
+      return;
+    }
+
+    // Récupérer toutes les contraintes UNIQUE sur la colonne cle_unique
+    const [constraints] = await sequelize.query(`
+      SELECT tc.constraint_name
+      FROM information_schema.table_constraints tc
+      JOIN information_schema.key_column_usage kcu
+        ON tc.constraint_name = kcu.constraint_name
+        AND tc.table_schema = kcu.table_schema
+      WHERE tc.table_name = 'notifications'
+        AND tc.constraint_type = 'UNIQUE'
+        AND kcu.column_name = 'cle_unique'
+      ORDER BY tc.constraint_name;
+    `);
+
+    if (constraints.length <= 1) {
+      console.log(`✅ Déjà propre (${constraints.length} contrainte UNIQUE sur 'cle_unique')`);
+      return;
+    }
+
+    console.log(`📊 ${constraints.length} contraintes UNIQUE trouvées sur 'cle_unique' - Nettoyage en cours...`);
+
+    // On garde la première (ordre alphabétique), on supprime les autres
+    const toKeep = constraints[0].constraint_name;
+    const toDrop = constraints.slice(1);
+
+    let deleted = 0;
+    for (const row of toDrop) {
+      try {
+        await sequelize.query(`ALTER TABLE notifications DROP CONSTRAINT IF EXISTS "${row.constraint_name}"`);
+        deleted++;
+        console.log(`   ✅ Contrainte supprimée: ${row.constraint_name}`);
+      } catch (err: any) {
+        console.log(`   ⚠️ Impossible de supprimer ${row.constraint_name}:`, err.message);
+      }
+    }
+
+    console.log(`✅ Nettoyage terminé : ${deleted} contrainte(s) supprimée(s), "${toKeep}" conservée.`);
+
+  } catch (error) {
+    console.error('⚠️ Erreur lors du nettoyage des contraintes notifications:', error);
     console.log('ℹ️ Le nettoyage sera réessayé au prochain démarrage.');
   }
 }
@@ -279,134 +321,21 @@ async function updateRoomStatusEnum() {
   }
 }
 
-/**
- * ✅ Crée l'énumération pour les notifications si elle n'existe pas
- */
-async function createNotificationEnum() {
-  try {
-    const enumResult = await sequelize.query(
-      `SELECT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'enum_notifications_type') as exists;`
-    );
-    
-    const enumExists = enumResult[0][0]?.exists || false;
-    
-    if (!enumExists) {
-      console.log('🔄 Création de l\'énumération enum_notifications_type...');
-      await sequelize.query(`
-        CREATE TYPE enum_notifications_type AS ENUM (
-          'ACOMPTE_MANQUANT',
-          'CONFIRMATION_ATTENTE',
-          'IMPAYE',
-          'ARRIVEE_JOUR',
-          'CHECKIN_RETARDE'
-        );
-      `);
-      console.log('✅ Énumération enum_notifications_type créée avec succès.');
-    } else {
-      console.log('✅ Énumération enum_notifications_type existe déjà.');
-    }
-  } catch (error) {
-    console.error('⚠️ Erreur lors de la création de l\'énumération des notifications:', error);
-  }
-}
-
-/**
- * ✅ Crée l'énumération pour les gravités des notifications
- */
-async function createNotificationGraviteEnum() {
-  try {
-    const enumResult = await sequelize.query(
-      `SELECT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'enum_notifications_gravite') as exists;`
-    );
-    
-    const enumExists = enumResult[0][0]?.exists || false;
-    
-    if (!enumExists) {
-      console.log('🔄 Création de l\'énumération enum_notifications_gravite...');
-      await sequelize.query(`
-        CREATE TYPE enum_notifications_gravite AS ENUM (
-          'info',
-          'success',
-          'warning',
-          'error'
-        );
-      `);
-      console.log('✅ Énumération enum_notifications_gravite créée avec succès.');
-    } else {
-      console.log('✅ Énumération enum_notifications_gravite existe déjà.');
-    }
-  } catch (error) {
-    console.error('⚠️ Erreur lors de la création de l\'énumération des gravités:', error);
-  }
-}
-
-/**
- * ✅ Crée la table notifications si elle n'existe pas
- */
-async function createNotificationsTable() {
-  try {
-    const tables = await sequelize.getQueryInterface().showAllTables();
-    
-    if (!tables.includes('notifications')) {
-      console.log('🔄 Création de la table notifications...');
-      
-      await sequelize.query(`
-        CREATE TABLE IF NOT EXISTS notifications (
-          id SERIAL PRIMARY KEY,
-          type enum_notifications_type NOT NULL,
-          titre VARCHAR(255) NOT NULL,
-          message VARCHAR(255) NOT NULL,
-          gravite enum_notifications_gravite NOT NULL DEFAULT 'info',
-          lu BOOLEAN NOT NULL DEFAULT false,
-          "reservationId" INTEGER,
-          "clientId" INTEGER,
-          "cleUnique" VARCHAR(255) NOT NULL UNIQUE,
-          created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
-          updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
-          CONSTRAINT fk_notifications_reservation FOREIGN KEY ("reservationId") 
-            REFERENCES reservations(id) ON DELETE CASCADE ON UPDATE CASCADE,
-          CONSTRAINT fk_notifications_client FOREIGN KEY ("clientId") 
-            REFERENCES clients(id) ON DELETE CASCADE ON UPDATE CASCADE
-        );
-      `);
-      
-      await sequelize.query(`
-        CREATE INDEX idx_notifications_type ON notifications(type);
-        CREATE INDEX idx_notifications_lu ON notifications(lu);
-        CREATE INDEX idx_notifications_reservationId ON notifications("reservationId");
-        CREATE INDEX idx_notifications_clientId ON notifications("clientId");
-        CREATE INDEX idx_notifications_created_at ON notifications(created_at);
-        CREATE INDEX idx_notifications_cleUnique ON notifications("cleUnique");
-      `);
-      
-      console.log('✅ Table notifications créée avec succès.');
-    } else {
-      console.log('✅ Table notifications existe déjà.');
-    }
-  } catch (error) {
-    console.error('⚠️ Erreur lors de la création de la table notifications:', error);
-  }
-}
-
 export const initDatabase = async (force: boolean = false) => {
   try {
     await sequelize.authenticate();
     console.log('✅ Connexion à la base de données établie avec succès.');
 
     // ✅ NETTOYAGE COMPLET DES INDEX EN DOUBLE (supprime TOUS les index en double)
-    await cleanAllDuplicateIndexes(); // <-- NOUVEAU : nettoyage complet automatique
+    await cleanAllDuplicateIndexes();
 
-    // ✅ Créer les énumérations AVANT la synchronisation
-    await createNotificationEnum();
-    await createNotificationGraviteEnum();
-
-    // ✅ Créer la table manuellement AVANT la synchronisation
-    await createNotificationsTable();
+    // ✅ NETTOYAGE DES CONTRAINTES UNIQUE EN DOUBLE SUR notifications.cle_unique
+    await cleanDuplicateNotificationConstraints();
 
     // ✅ Mettre à jour l'énumération des chambres
     await updateRoomStatusEnum();
 
-    // Import des modèles pour garantir l'ordre
+    // ✅ Import des modèles pour garantir l'ordre
     await import('../models');
     
     const options: any = {};
