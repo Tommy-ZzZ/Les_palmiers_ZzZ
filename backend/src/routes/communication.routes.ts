@@ -23,6 +23,7 @@ router.delete('/modeles/:id', authenticate, communicationController.deleteModele
 router.post('/envoyer', authenticate, communicationController.envoyerEmail.bind(communicationController));
 router.get('/historique', authenticate, communicationController.getHistorique.bind(communicationController));
 router.get('/messages/:id', authenticate, communicationController.getMessage.bind(communicationController));
+router.delete('/messages/:id', authenticate, communicationController.deleteMessage.bind(communicationController));
 router.post('/messages/:id/reessayer', authenticate, communicationController.reessayerEnvoi.bind(communicationController));
 
 // ============================================

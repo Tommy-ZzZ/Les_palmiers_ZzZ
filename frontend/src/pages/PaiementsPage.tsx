@@ -423,6 +423,38 @@ const ModePaiementIcon = ({ mode }: { mode: ModePaiement }) => {
 };
 
 // ============================================
+// COMPOSANT — RING DE RECOUVREMENT (✅ NOUVEAU DESIGN)
+// ============================================
+
+const RecouvrementRing = ({ taux }: { taux: number }) => {
+  const radius = 22;
+  const circumference = 2 * Math.PI * radius;
+  const [progress, setProgress] = useState(0);
+  useEffect(() => {
+    const t = setTimeout(() => setProgress(taux), 300);
+    return () => clearTimeout(t);
+  }, [taux]);
+  const offset = circumference - (progress / 100) * circumference;
+  const color = taux >= 80 ? '#10b981' : taux >= 50 ? '#f59e0b' : '#f43f5e';
+
+  return (
+    <div className="relative w-14 h-14 shrink-0">
+      <svg className="w-14 h-14 -rotate-90" viewBox="0 0 52 52">
+        <circle cx="26" cy="26" r={radius} fill="none" stroke="#e5e7eb" strokeWidth="4" />
+        <circle
+          cx="26" cy="26" r={radius} fill="none" stroke={color} strokeWidth="4" strokeLinecap="round"
+          strokeDasharray={circumference} strokeDashoffset={offset}
+          className="transition-all duration-1000 ease-out"
+        />
+      </svg>
+      <span className="absolute inset-0 flex items-center justify-center text-xs font-bold text-gray-700">
+        {taux}%
+      </span>
+    </div>
+  );
+};
+
+// ============================================
 // COMPOSANT — STAT CARD
 // ============================================
 
@@ -475,13 +507,14 @@ const StatCard = ({
     return () => clearTimeout(t);
   }, [delay]);
 
+  // ✅ Design "glassmorphism" léger, plus chill
   const palette = {
-    palmier: { card: 'border-palmier-100 bg-white hover:border-palmier-300', icon: 'bg-gradient-to-br from-palmier-50 to-palmier-100 text-palmier-600' },
-    emerald: { card: 'border-emerald-100 bg-white hover:border-emerald-300', icon: 'bg-gradient-to-br from-emerald-50 to-emerald-100 text-emerald-600' },
-    amber: { card: 'border-amber-100 bg-white hover:border-amber-300', icon: 'bg-gradient-to-br from-amber-50 to-amber-100 text-amber-600' },
-    rose: { card: 'border-rose-100 bg-white hover:border-rose-300', icon: 'bg-gradient-to-br from-rose-50 to-rose-100 text-rose-600' },
-    sky: { card: 'border-sky-100 bg-white hover:border-sky-300', icon: 'bg-gradient-to-br from-sky-50 to-sky-100 text-sky-600' },
-    purple: { card: 'border-purple-100 bg-white hover:border-purple-300', icon: 'bg-gradient-to-br from-purple-50 to-purple-100 text-purple-600' },
+    palmier: { card: 'border-palmier-100/60 bg-white/80 backdrop-blur-sm hover:border-palmier-300 hover:bg-white', icon: 'bg-gradient-to-br from-palmier-50 to-palmier-100 text-palmier-600' },
+    emerald: { card: 'border-emerald-100/60 bg-white/80 backdrop-blur-sm hover:border-emerald-300 hover:bg-white', icon: 'bg-gradient-to-br from-emerald-50 to-emerald-100 text-emerald-600' },
+    amber:   { card: 'border-amber-100/60 bg-white/80 backdrop-blur-sm hover:border-amber-300 hover:bg-white', icon: 'bg-gradient-to-br from-amber-50 to-amber-100 text-amber-600' },
+    rose:    { card: 'border-rose-100/60 bg-white/80 backdrop-blur-sm hover:border-rose-300 hover:bg-white', icon: 'bg-gradient-to-br from-rose-50 to-rose-100 text-rose-600' },
+    sky:     { card: 'border-sky-100/60 bg-white/80 backdrop-blur-sm hover:border-sky-300 hover:bg-white', icon: 'bg-gradient-to-br from-sky-50 to-sky-100 text-sky-600' },
+    purple:  { card: 'border-purple-100/60 bg-white/80 backdrop-blur-sm hover:border-purple-300 hover:bg-white', icon: 'bg-gradient-to-br from-purple-50 to-purple-100 text-purple-600' },
   };
   const p = palette[color];
 
@@ -717,9 +750,9 @@ const PaiementRow = ({
 
   return (
     <tr
-      className={`group relative transition-all duration-500 ${
-        index % 2 === 0 ? 'bg-white' : 'bg-gray-50/30'
-      } hover:bg-palmier-50/40 ${
+      className={`group relative transition-all duration-500 ease-out ${
+        index % 2 === 0 ? 'bg-white' : 'bg-gray-50/40'
+      } hover:bg-gradient-to-r hover:from-palmier-50/50 hover:to-transparent ${
         visible ? 'opacity-100 translate-x-0' : 'opacity-0 -translate-x-3'
       }`}
       style={{ transitionDelay: visible ? `${index * 40}ms` : '0ms' }}
@@ -1111,10 +1144,6 @@ export default function PaiementsPage() {
     setShowModal(true);
   };
 
-  // ============================================
-  // ✅ CORRECTION : PAIEMENT → 100% + CONFIRMATION
-  // ============================================
-
   const handleSavePaiement = async () => {
     if (!selectedResa) return;
     const montant = Number(paiementForm.montant);
@@ -1159,6 +1188,13 @@ export default function PaiementsPage() {
     setShowConfirmation(true);
   };
 
+  // ============================================
+  // ✅ CORRECTION : envoi de la date choisie
+  //    + suppression de la double confirmation
+  //    de réservation (déjà gérée par le backend
+  //    via updateReservationPaymentStatus)
+  // ============================================
+
   const confirmPaiement = async () => {
     if (!selectedResa || !confirmationData) return;
 
@@ -1171,6 +1207,7 @@ export default function PaiementsPage() {
         montant: confirmationData.montant,
         modePaiement: paiementForm.modePaiement,
         typePaiement: paiementForm.typePaiement,
+        datePaiement: paiementForm.datePaiement, // ✅ CORRECTION : la date choisie était perdue
         reference: paiementForm.reference || undefined,
         notes: paiementForm.notes || undefined,
       };
@@ -1189,25 +1226,21 @@ export default function PaiementsPage() {
       }
 
       const response = await paiementService.create(payload);
-      
+
       if (response?.success) {
         toast.success('✅ Paiement enregistré avec succès');
 
-        // ✅ Récupérer la réservation mise à jour
-        const updatedResa = await reservationService.getById(selectedResa.id);
-        if (updatedResa?.success && updatedResa.data) {
-          const resa = updatedResa.data;
-          
-          // ✅ Si paiement complet → réservation CONFIRMEE
-          if (resa.statutPaiement === 'COMPLET' && resa.statut === 'EN_ATTENTE_ACOMPTE') {
-            await reservationService.update(resa.id, { statut: 'CONFIRMEE' });
-            toast.success('✅ Réservation confirmée - Paiement complet reçu');
-            
-            // 🔔 Rafraîchir les chambres via WebSocket
-            refreshChambres();
-            try { localStorage.removeItem('chambres_cache'); } catch (e) { /* ignore */ }
-          }
+        // ✅ CORRECTION : le backend confirme déjà automatiquement la réservation
+        // (updateReservationPaymentStatus) et émet RESERVATION_CONFIRMED + REFRESH_CHAMBRES
+        // via WebSocket. On ne refait plus reservationService.update ici (c'était redondant
+        // et pouvait entrer en conflit avec la mise à jour serveur).
+        if (response.data?.reservation?.statut === 'CONFIRMEE') {
+          toast.success('✅ Réservation confirmée - Paiement complet reçu');
         }
+
+        // 🔔 Rafraîchir les chambres via WebSocket
+        refreshChambres();
+        try { localStorage.removeItem('chambres_cache'); } catch (e) { /* ignore */ }
 
         // ✅ Forcer le refresh des données
         await loadData();
@@ -1316,7 +1349,11 @@ export default function PaiementsPage() {
   // ============================================
 
   return (
-    <div className="min-h-screen bg-gray-50/60 p-4 lg:p-6 space-y-5">
+    <div className="min-h-screen bg-gradient-to-br from-gray-50 via-palmier-50/20 to-sky-50/30 p-4 lg:p-6 space-y-5 relative">
+
+      {/* ✅ Halos décoratifs discrets en fond (design "chill") */}
+      <div className="fixed top-0 right-0 w-96 h-96 bg-palmier-200/20 rounded-full blur-3xl -z-10 animate-float-slow pointer-events-none" />
+      <div className="fixed bottom-0 left-0 w-72 h-72 bg-sky-200/15 rounded-full blur-3xl -z-10 animate-float-slow pointer-events-none" style={{ animationDelay: '2s' }} />
 
       <style>{`
         @keyframes slideIn {
@@ -1338,10 +1375,15 @@ export default function PaiementsPage() {
           0%,100% { transform: scale(1); }
           50% { transform: scale(1.05); }
         }
+        @keyframes floatSlow {
+          0%, 100% { transform: translate(0, 0) scale(1); }
+          50% { transform: translate(-20px, 20px) scale(1.05); }
+        }
         .animate-slide-in { animation: slideIn 0.4s ease-out forwards; }
         .animate-shake { animation: shake 0.55s ease-in-out; }
         .animate-pulse-dot { animation: pulseDot 1.8s ease-in-out infinite; }
         .animate-pulse-slow { animation: pulseSlow 2s ease-in-out infinite; }
+        .animate-float-slow { animation: floatSlow 12s ease-in-out infinite; }
         @media print {
           .no-print { display: none !important; }
           .print-only { display: block !important; }
@@ -1365,16 +1407,19 @@ export default function PaiementsPage() {
                 {stats.total} réservation{stats.total > 1 ? 's' : ''}
               </span>
             </h1>
-            <p className="text-sm text-gray-500 mt-0.5 flex items-center gap-2 flex-wrap">
-              <span className="text-emerald-600 font-medium">{stats.complet} soldées</span>
-              {stats.partiel > 0 && <span className="text-amber-500 font-medium">· {stats.partiel} partielles</span>}
-              {stats.enAttente > 0 && <span className="text-sky-500 font-medium">· {stats.enAttente} en attente</span>}
-              <span className="text-gray-300">|</span>
-              <span className="text-gray-400">Taux de recouvrement</span>
-              <span className={`font-semibold ${stats.tauxRecouvrement >= 80 ? 'text-emerald-600' : stats.tauxRecouvrement >= 50 ? 'text-amber-500' : 'text-rose-500'}`}>
-                {stats.tauxRecouvrement}%
-              </span>
-            </p>
+            <div className="flex items-center gap-3 mt-1">
+              <RecouvrementRing taux={stats.tauxRecouvrement} />
+              <p className="text-sm text-gray-500 flex items-center gap-2 flex-wrap">
+                <span className="text-emerald-600 font-medium">{stats.complet} soldées</span>
+                {stats.partiel > 0 && <span className="text-amber-500 font-medium">· {stats.partiel} partielles</span>}
+                {stats.enAttente > 0 && <span className="text-sky-500 font-medium">· {stats.enAttente} en attente</span>}
+                <span className="text-gray-300">|</span>
+                <span className="text-gray-400">Taux de recouvrement</span>
+                <span className={`font-semibold ${stats.tauxRecouvrement >= 80 ? 'text-emerald-600' : stats.tauxRecouvrement >= 50 ? 'text-amber-500' : 'text-rose-500'}`}>
+                  {stats.tauxRecouvrement}%
+                </span>
+              </p>
+            </div>
           </div>
         </div>
 
@@ -1450,7 +1495,7 @@ export default function PaiementsPage() {
 
       {/* ── FILTRES ─────────────────────────────── */}
       <div
-        className={`bg-white rounded-xl border border-gray-200 overflow-hidden transition-all duration-500 ${
+        className={`bg-white/90 backdrop-blur-sm rounded-xl border border-gray-200 overflow-hidden transition-all duration-500 ${
           mounted ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'
         }`}
         style={{ transitionDelay: '320ms' }}
@@ -1530,7 +1575,7 @@ export default function PaiementsPage() {
 
       {/* ── TABLEAU ──────────────────────────────── */}
       <div
-        className={`bg-white rounded-xl border border-gray-200 overflow-hidden transition-all duration-500 ${
+        className={`bg-white/90 backdrop-blur-sm rounded-xl border border-gray-200 overflow-hidden transition-all duration-500 ${
           mounted ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'
         }`}
         style={{ transitionDelay: '380ms' }}
@@ -1656,7 +1701,7 @@ export default function PaiementsPage() {
             <button
               onClick={handleSavePaiement}
               disabled={saving}
-              className="px-5 py-2.5 text-sm font-medium text-white bg-gradient-to-r from-palmier-600 to-palmier-700 hover:from-palmier-700 hover:to-palmier-800 rounded-xl transition-all duration-200 hover:scale-105 active:scale-95 disabled:opacity-50 disabled:hover:scale-100 flex items-center gap-2 shadow-lg shadow-palmier-200"
+              className="px-5 py-2.5 text-sm font-medium text-white bg-gradient-to-r from-palmier-600 to-palmier-700 hover:from-palmier-500 hover:to-palmier-600 rounded-xl transition-all duration-300 hover:scale-[1.03] active:scale-95 disabled:opacity-50 disabled:hover:scale-100 flex items-center gap-2 shadow-lg shadow-palmier-200 hover:shadow-xl hover:shadow-palmier-300/60"
             >
               {saving ? (
                 <><Loader2 size={15} className="animate-spin" />Enregistrement…</>

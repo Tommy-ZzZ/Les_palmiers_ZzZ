@@ -51,7 +51,11 @@ Message.init(
       },
     },
     type: {
-      type: DataTypes.ENUM('CONFIRMATION', 'RAPPEL_J7', 'REMERCIEMENT_J2', 'ANNULATION', 'RELANCE_PAIEMENT'),
+      // ✅ CORRECTION : ajout de 'MANUEL', utilisé par défaut lors de la création
+      // d'un nouveau modèle depuis la page Communication (handleCreateModele).
+      // Sans cette valeur, Postgres rejetait l'insertion (enum invalide) et
+      // le bouton "Créer un modèle" échouait systématiquement.
+      type: DataTypes.ENUM('CONFIRMATION', 'RAPPEL_J7', 'REMERCIEMENT_J2', 'ANNULATION', 'RELANCE_PAIEMENT', 'MANUEL'),
       allowNull: false,
     },
     sujet: {
@@ -87,7 +91,7 @@ Message.init(
       type: DataTypes.INTEGER,
       allowNull: true,
       references: {
-        model: 'utilisateurs', // ⬅️ CORRECTION : 'utilisateurs' au lieu de 'users'
+        model: 'utilisateurs',
         key: 'id',
       },
       onDelete: 'SET NULL',
@@ -97,7 +101,7 @@ Message.init(
       type: DataTypes.INTEGER,
       allowNull: true,
       references: {
-        model: 'utilisateurs', // ⬅️ CORRECTION : 'utilisateurs' au lieu de 'users'
+        model: 'utilisateurs',
         key: 'id',
       },
       onDelete: 'SET NULL',

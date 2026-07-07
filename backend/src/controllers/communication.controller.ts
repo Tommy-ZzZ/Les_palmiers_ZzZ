@@ -1,7 +1,7 @@
 // backend/src/controllers/communication.controller.ts
 import { Request, Response } from 'express';
 import { Op } from 'sequelize';
-import { Message, MessageEmail, Client, Reservation, HistoriqueModification, User } from '../models';
+import { Message, MessageEmail, Client, Reservation, Room, HistoriqueModification, User } from '../models';
 import { envoyerViaOVH, substituerVariables } from '../services/email.service';
 
 // ─── CONTROLLER ───
@@ -88,7 +88,6 @@ export class CommunicationController {
         valide: false,
       });
 
-      // ✅ HistoriqueModification existe maintenant
       await HistoriqueModification.create({
         entite: 'Message',
         idEntite: parseInt(id),
@@ -139,7 +138,6 @@ export class CommunicationController {
         return res.status(404).json({ success: false, message: 'Modèle non trouvé' });
       }
 
-      // ✅ HistoriqueModification existe maintenant
       await HistoriqueModification.create({
         entite: 'Message',
         idEntite: parseInt(id),
@@ -179,17 +177,35 @@ export class CommunicationController {
         return res.status(400).json({ success: false, message: 'Ce client n\'a pas d\'adresse email' });
       }
 
+      // Récupère la réservation (avec sa chambre) si elle est fournie, afin que
+      // les variables dynamiques comme {{date_arrivee}}, {{chambre_nom}} ou
+      // {{montant_total}} soient réellement substituées (§3.6.2).
+      let reservation: Reservation | null = null;
+      if (reservationId) {
+        reservation = await Reservation.findByPk(reservationId, {
+          include: [{ model: Room, as: 'chambre' }],
+        });
+      }
+
+      // On part du sujet/corps saisi par l'utilisateur (celui envoyé par le
+      // formulaire), et on ne retombe sur le contenu brut du modèle que si
+      // l'utilisateur n'a rien renseigné.
       let messageSujet = sujet;
       let messageCorps = corps;
 
       if (messageId) {
         const modele = await Message.findByPk(messageId);
-        if (modele) {
-          const data = { client, reservationId };
-          messageSujet = substituerVariables(modele.sujet, data);
-          messageCorps = substituerVariables(modele.corps, data);
+        if (!modele) {
+          return res.status(404).json({ success: false, message: 'Modèle non trouvé' });
         }
+        messageSujet = messageSujet || modele.sujet;
+        messageCorps = messageCorps || modele.corps;
       }
+
+      // Substitution des variables dynamiques, qu'il s'agisse d'un modèle
+      // appliqué ou d'un texte libre contenant des variables.
+      messageSujet = substituerVariables(messageSujet || '', { client, reservationId, reservation: reservation || undefined });
+      messageCorps = substituerVariables(messageCorps || '', { client, reservationId, reservation: reservation || undefined });
 
       const resultat = await envoyerViaOVH({
         to: client.email,
@@ -242,10 +258,10 @@ export class CommunicationController {
       res.json({
         success: true,
         data: rows,
-        pagination: { 
-          total: count, 
-          limit: parseInt(limit as string) || 50, 
-          offset: parseInt(offset as string) || 0 
+        pagination: {
+          total: count,
+          limit: parseInt(limit as string) || 50,
+          offset: parseInt(offset as string) || 0
         },
       });
     } catch (error: any) {
@@ -267,6 +283,22 @@ export class CommunicationController {
     } catch (error: any) {
       console.error('[getMessage] Erreur:', error);
       res.status(500).json({ success: false, message: 'Erreur lors de la récupération du message' });
+    }
+  }
+
+  async deleteMessage(req: Request, res: Response) {
+    try {
+      const { id } = req.params;
+      const message = await MessageEmail.findByPk(id);
+      if (!message) {
+        return res.status(404).json({ success: false, message: 'Message non trouvé' });
+      }
+
+      await message.destroy();
+      res.json({ success: true, message: 'Message supprimé avec succès' });
+    } catch (error: any) {
+      console.error('[deleteMessage] Erreur:', error);
+      res.status(500).json({ success: false, message: 'Erreur lors de la suppression du message' });
     }
   }
 
@@ -458,5 +490,4 @@ export class CommunicationController {
   }
 }
 
-// ⬅️ EXPORT UNIQUE
 export default new CommunicationController();

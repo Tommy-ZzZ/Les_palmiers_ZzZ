@@ -9,6 +9,7 @@ import dotenv from 'dotenv';
 import http from 'http';
 
 // ✅ Import des routes
+import codesPromoRoutes from './routes/codesPromo.routes';
 import authRoutes from './routes/auth.routes';
 import chambresRoutes from './routes/chambres.routes';
 import reservationsRoutes from './routes/reservations.routes';
@@ -102,6 +103,8 @@ app.use('/api/clients', clientsRouter);
 app.use('/api/paiements', paiementsRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/services-annexes', servicesAnnexesRoutes);
+app.use('/api/codes-promo', codesPromoRoutes);
+app.use('/api/codes-promo', codesPromoRoutes);
 
 // ✅ Routes communication (§3.6)
 app.use('/api/communication', communicationRoutes);

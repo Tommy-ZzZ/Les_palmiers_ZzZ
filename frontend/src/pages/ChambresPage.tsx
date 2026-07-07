@@ -1,4 +1,3 @@
-// frontend/src/pages/ChambresPage.tsx
 import React, { useEffect, useState, useRef, useCallback } from 'react';
 import toast from 'react-hot-toast';
 import api from '../services/api';
@@ -17,7 +16,8 @@ import {
   Clock, Sun, Cloud, Snowflake, Home, Key, Shield,
   ArrowRight, Star, Award, Crown,
   Tv, Gift, Tag, Zap, Rocket, Gem, BadgeCheck,
-  Layers, BarChart3, PieChart, Activity, RefreshCcw, Wifi as WifiIcon, WifiOff
+  Layers, BarChart3, PieChart, Activity, RefreshCcw, Wifi as WifiIcon, WifiOff,
+  ClipboardCheck, ToggleLeft, ToggleRight, PackageOpen
 } from 'lucide-react';
 
 // ============================================
@@ -212,7 +212,7 @@ const EQUIPEMENTS: Record<string, { label: string; icon: React.ReactNode; color:
 };
 
 // ============================================
-// HELPERS - ✅ CORRECTION IMPORTANTE
+// HELPERS
 // ============================================
 
 function estChambreDisponible(
@@ -234,13 +234,11 @@ function estChambreDisponible(
   return true;
 }
 
-// ✅ CORRECTION : Inclure EN_ATTENTE_ACOMPTE
 function estChambreOccupeeActuellement(chambre: Chambre, reservations: ReservationLight[] = []): boolean {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
   return reservations.some(r => {
     if (r.chambreId !== chambre.id) return false;
-    // ✅ INCLURE EN_ATTENTE_ACOMPTE
     if (r.statut !== 'CONFIRMEE' && r.statut !== 'EN_ATTENTE_ACOMPTE') return false;
     const dateDepart = new Date(r.dateDepart);
     dateDepart.setHours(23, 59, 59, 999);
@@ -272,6 +270,14 @@ function getJoursRestants(dateDepart: string): number {
   return Math.max(0, Math.ceil((depart.getTime() - now.getTime()) / (1000 * 60 * 60 * 24)));
 }
 
+function getJoursRestantsPromo(dateFin: string): number {
+  const now = new Date();
+  now.setHours(0, 0, 0, 0);
+  const fin = new Date(dateFin);
+  fin.setHours(0, 0, 0, 0);
+  return Math.max(0, Math.ceil((fin.getTime() - now.getTime()) / (1000 * 60 * 60 * 24)));
+}
+
 function formatReduction(promo: { tauxReduction?: number; reductionFixe?: number }): string {
   if (promo.tauxReduction) return `${promo.tauxReduction}%`;
   if (promo.reductionFixe) return `${formatEuro(promo.reductionFixe)}`;
@@ -290,6 +296,15 @@ function generateRandomCode(): string {
 function validatePromoCode(code: string): boolean {
   const regex = /^[A-Z0-9]{1,6}$/;
   return regex.test(code);
+}
+
+async function copyToClipboard(text: string) {
+  try {
+    await navigator.clipboard.writeText(text);
+    toast.success(`📋 "${text}" copié`);
+  } catch {
+    toast.error('Impossible de copier');
+  }
 }
 
 // ============================================
@@ -378,7 +393,37 @@ const StatusBadge = ({ statut, animated = false }: { statut: StatutAffichage; an
 };
 
 // ============================================
-// CHAMBRE CARD - ✅ CORRECTION
+// PROGRESS BAR UTILISATION PROMO
+// ============================================
+
+const PromoUsageBar = ({ used, max }: { used: number; max?: number | null }) => {
+  if (!max) {
+    return (
+      <div className="flex items-center gap-2">
+        <div className="flex-1 h-1.5 bg-gray-100 rounded-full overflow-hidden">
+          <div className="h-full bg-gradient-to-r from-amber-400 to-orange-400 rounded-full" style={{ width: '100%' }} />
+        </div>
+        <span className="text-[10px] text-gray-400 whitespace-nowrap">{used} · ∞</span>
+      </div>
+    );
+  }
+  const pct = Math.min(100, Math.round((used / max) * 100));
+  const isNearLimit = pct >= 80;
+  return (
+    <div className="flex items-center gap-2">
+      <div className="flex-1 h-1.5 bg-gray-100 rounded-full overflow-hidden">
+        <div
+          className={`h-full rounded-full transition-all duration-500 ${isNearLimit ? 'bg-gradient-to-r from-red-400 to-red-500' : 'bg-gradient-to-r from-amber-400 to-orange-400'}`}
+          style={{ width: `${pct}%` }}
+        />
+      </div>
+      <span className={`text-[10px] whitespace-nowrap ${isNearLimit ? 'text-red-500 font-semibold' : 'text-gray-400'}`}>{used}/{max}</span>
+    </div>
+  );
+};
+
+// ============================================
+// CHAMBRE CARD
 // ============================================
 
 const ChambreCard = ({
@@ -406,7 +451,6 @@ const ChambreCard = ({
   const estOccupee = statut === 'OCCUPEE';
   const statutCfg = STATUT_CONFIG[statut];
 
-  // ✅ CORRECTION : Inclure EN_ATTENTE_ACOMPTE
   const reservationEnCours = reservationsActuelles.find(r => {
     if (r.chambreId !== chambre.id) return false;
     if (r.statut !== 'CONFIRMEE' && r.statut !== 'EN_ATTENTE_ACOMPTE') return false;
@@ -451,7 +495,7 @@ const ChambreCard = ({
     >
       <div className={`relative h-44 rounded-t-2xl overflow-hidden bg-gradient-to-br ${statutCfg.bgGradient} flex items-center justify-center`}>
         <div className="absolute inset-0 opacity-10 bg-[radial-gradient(circle_at_50%_50%,_rgba(13,148,136,0.1)_0%,_transparent_70%)]" />
-        
+
         <div className="relative z-10 flex flex-col items-center">
           <BedDouble size={48} className={`${statut === 'OCCUPEE' ? 'text-blue-300' : statut === 'DISPONIBLE' ? 'text-emerald-300' : 'text-gray-300'} transition-transform duration-300 group-hover:scale-105`} />
           {reservationEnCours && (
@@ -601,21 +645,21 @@ const ChambreCard = ({
                 <MenuItem icon={<Edit2 size={13} />} label="Modifier la chambre" onClick={() => { onEdit(chambre); setMenuOpen(false); }} />
                 <MenuItem icon={<Calendar size={13} />} label="Bloquer des dates" onClick={() => { onBlock(chambre); setMenuOpen(false); }} />
                 <MenuItem icon={<DollarSign size={13} />} label="Gérer les tarifs" onClick={() => { onManageTarifs(chambre); setMenuOpen(false); }} />
-                
+
                 <div className="border-t border-gray-100 my-1">
                   <div className="px-2 py-1">
                     <p className="text-[10px] text-gray-400 uppercase tracking-wider px-2 py-0.5">Promotions</p>
                   </div>
-                  <MenuItem 
-                    icon={<Gift size={13} className="text-amber-500" />} 
-                    label="Appliquer un code promo" 
-                    onClick={() => { if (onApplyPromo) onApplyPromo(chambre); setMenuOpen(false); }} 
-                    highlight 
+                  <MenuItem
+                    icon={<Gift size={13} className="text-amber-500" />}
+                    label="Appliquer un code promo"
+                    onClick={() => { if (onApplyPromo) onApplyPromo(chambre); setMenuOpen(false); }}
+                    highlight
                   />
-                  <MenuItem 
-                    icon={<Tag size={13} className="text-purple-500" />} 
-                    label="Voir les promos actives" 
-                    onClick={() => { if (onViewPromos) onViewPromos(chambre); setMenuOpen(false); }} 
+                  <MenuItem
+                    icon={<Tag size={13} className="text-purple-500" />}
+                    label="Voir les promos actives"
+                    onClick={() => { if (onViewPromos) onViewPromos(chambre); setMenuOpen(false); }}
                   />
                 </div>
 
@@ -683,7 +727,7 @@ const MenuItem = ({ icon, label, onClick, danger = false, highlight = false }: {
   <button
     onClick={onClick}
     className={`w-full flex items-center gap-2.5 px-3 py-2 text-sm transition-all duration-150 ${
-      danger ? 'text-red-500 hover:bg-red-50' : 
+      danger ? 'text-red-500 hover:bg-red-50' :
       highlight ? 'text-amber-700 hover:bg-amber-50 bg-amber-50/30' :
       'text-gray-600 hover:bg-gray-50'
     }`}
@@ -693,7 +737,7 @@ const MenuItem = ({ icon, label, onClick, danger = false, highlight = false }: {
 );
 
 // ============================================
-// MODAL DÉTAIL - ✅ CORRECTION
+// MODAL DÉTAIL
 // ============================================
 
 const ChambreDetailModal = ({
@@ -710,7 +754,6 @@ const ChambreDetailModal = ({
   const vue = VUE_CONFIG[chambre.vue];
   const saison = SAISON_CONFIG[chambre.saison_actuelle] ?? SAISON_CONFIG.MOYENNE;
 
-  // ✅ CORRECTION : Inclure EN_ATTENTE_ACOMPTE
   const reservationEnCours = reservationsActuelles.find(r => {
     if (r.chambreId !== chambre.id) return false;
     if (r.statut !== 'CONFIRMEE' && r.statut !== 'EN_ATTENTE_ACOMPTE') return false;
@@ -813,7 +856,6 @@ const ChambreDetailModal = ({
           </div>
         )}
 
-        {/* ✅ Inclure EN_ATTENTE_ACOMPTE dans les réservations affichées */}
         {reservationsActuelles.filter(r => r.chambreId === chambre.id && (r.statut === 'CONFIRMEE' || r.statut === 'EN_ATTENTE_ACOMPTE')).length > 0 && (
           <div className="bg-blue-50 rounded-xl p-4 border border-blue-100">
             <p className="text-xs font-semibold text-blue-700 uppercase tracking-wide mb-2 flex items-center gap-2">
@@ -1217,9 +1259,9 @@ const HistoriqueModal = ({ chambre, isOpen, onClose }: {
             <div key={h.id} className="flex items-start justify-between p-3 bg-gray-50 rounded-xl hover:bg-gray-100 transition-colors border border-gray-100">
               <div>
                 <p className="text-sm font-medium text-gray-800">
-                  <span className="text-gray-500">Modification de</span> {h.champ || h.field} : 
-                  <span className="text-red-500 line-through ml-1">{h.ancienneValeur || h.old_value || '—'}</span> 
-                  <ArrowRight size={12} className="inline mx-1 text-gray-400" /> 
+                  <span className="text-gray-500">Modification de</span> {h.champ || h.field} :
+                  <span className="text-red-500 line-through ml-1">{h.ancienneValeur || h.old_value || '—'}</span>
+                  <ArrowRight size={12} className="inline mx-1 text-gray-400" />
                   <span className="text-emerald-600 font-semibold">{h.nouvelleValeur || h.new_value || '—'}</span>
                 </p>
                 <p className="text-xs text-gray-400 mt-0.5">👤 {h.modifiePar || h.modified_by || 'Inconnu'}</p>
@@ -1234,7 +1276,7 @@ const HistoriqueModal = ({ chambre, isOpen, onClose }: {
 };
 
 // ============================================
-// MODAL CODE PROMO
+// MODAL CRÉER CODE PROMO
 // ============================================
 
 const CodePromoModal = ({ isOpen, onClose, onSave, saving }: {
@@ -1256,24 +1298,24 @@ const CodePromoModal = ({ isOpen, onClose, onSave, saving }: {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     if (!validatePromoCode(form.code)) {
       toast.error('Le code doit contenir 1 à 6 caractères (majuscules et chiffres uniquement)');
       return;
     }
-    
-    await onSave({ 
-      ...form, 
-      reductionPourcentage: +form.reductionPourcentage, 
-      reductionFixe: +form.reductionFixe, 
-      usagesMax: +form.usagesMax 
+
+    await onSave({
+      ...form,
+      reductionPourcentage: +form.reductionPourcentage,
+      reductionFixe: +form.reductionFixe,
+      usagesMax: +form.usagesMax
     });
   };
 
   useEffect(() => {
     if (isOpen) {
-      setForm(f => ({ 
-        ...f, 
+      setForm(f => ({
+        ...f,
         code: generateRandomCode(),
         dateDebutValidite: new Date().toISOString().split('T')[0],
         dateFinValidite: new Date(Date.now() + 30 * 86400000).toISOString().split('T')[0]
@@ -1301,17 +1343,17 @@ const CodePromoModal = ({ isOpen, onClose, onSave, saving }: {
           <br />
           <span className="text-[10px] text-gray-400">Le code doit contenir 1 à 6 caractères (majuscules et chiffres)</span>
         </p>
-        
+
         <div>
           <div className="flex items-end gap-2">
             <div className="flex-1">
               <label className={labelCls}>Code *</label>
-              <input 
-                value={form.code} 
-                onChange={e => setForm(f => ({ ...f, code: e.target.value.toUpperCase() }))} 
-                placeholder="Ex: ETE2026" 
-                required 
-                className={inputCls + ' font-mono tracking-widest uppercase'} 
+              <input
+                value={form.code}
+                onChange={e => setForm(f => ({ ...f, code: e.target.value.toUpperCase() }))}
+                placeholder="Ex: ETE2026"
+                required
+                className={inputCls + ' font-mono tracking-widest uppercase'}
                 maxLength={6}
               />
             </div>
@@ -1373,12 +1415,12 @@ const CodePromoModal = ({ isOpen, onClose, onSave, saving }: {
 // MODAL APPLIQUER CODE PROMO
 // ============================================
 
-const ApplyPromoModal = ({ 
-  chambre, 
-  isOpen, 
-  onClose, 
+const ApplyPromoModal = ({
+  chambre,
+  isOpen,
+  onClose,
   onApply,
-  saving 
+  saving
 }: {
   chambre: Chambre | null;
   isOpen: boolean;
@@ -1393,7 +1435,7 @@ const ApplyPromoModal = ({
   useEffect(() => {
     if (isOpen && chambre) {
       setLoading(true);
-      api.get('/codes-promo/actifs')
+      api.get('/chambres/codes-promo/actifs')
         .then(res => {
           const data = res.data.data || [];
           setAvailablePromos(data);
@@ -1413,9 +1455,9 @@ const ApplyPromoModal = ({
       footer={
         <div className="flex gap-2 justify-end">
           <button onClick={onClose} className="px-4 py-2 text-sm font-medium text-gray-600 hover:bg-gray-50 rounded-xl border border-gray-200 transition-colors" disabled={saving}>Annuler</button>
-          <button 
-            onClick={() => onApply(code)} 
-            className="px-5 py-2 text-sm font-medium text-white bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 rounded-xl flex items-center gap-2 transition-all duration-200 shadow-sm" 
+          <button
+            onClick={() => onApply(code)}
+            className="px-5 py-2 text-sm font-medium text-white bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 rounded-xl flex items-center gap-2 transition-all duration-200 shadow-sm"
             disabled={saving || !code.trim() || !validatePromoCode(code)}
           >
             {saving ? <Loader2 size={15} className="animate-spin" /> : <Gift size={15} />} Appliquer
@@ -1431,12 +1473,12 @@ const ApplyPromoModal = ({
 
         <div>
           <label className="block text-xs font-medium text-gray-500 mb-1">Code promo (1-6 caractères, majuscules)</label>
-          <input 
-            type="text" 
-            value={code} 
-            onChange={e => setCode(e.target.value.toUpperCase())} 
-            placeholder="Ex: ETE2026" 
-            className={inputCls + ' font-mono tracking-widest uppercase'} 
+          <input
+            type="text"
+            value={code}
+            onChange={e => setCode(e.target.value.toUpperCase())}
+            placeholder="Ex: ETE2026"
+            className={inputCls + ' font-mono tracking-widest uppercase'}
             maxLength={6}
           />
           <p className="text-[10px] text-gray-400 mt-1">
@@ -1478,13 +1520,13 @@ const ApplyPromoModal = ({
 };
 
 // ============================================
-// MODAL PROMOS ACTIVES
+// MODAL PROMOS ACTIVES SUR UNE CHAMBRE
 // ============================================
 
-const PromosActiveModal = ({ 
-  chambre, 
-  isOpen, 
-  onClose 
+const PromosActiveModal = ({
+  chambre,
+  isOpen,
+  onClose
 }: {
   chambre: Chambre | null;
   isOpen: boolean;
@@ -1540,15 +1582,222 @@ const PromosActiveModal = ({
 };
 
 // ============================================
+// ✅ NOUVEAU : MODAL GESTION GLOBALE DES CODES PROMO
+// ============================================
+
+const GestionPromosModal = ({
+  isOpen,
+  onClose,
+  onCreateNew,
+  refreshSignal
+}: {
+  isOpen: boolean;
+  onClose: () => void;
+  onCreateNew: () => void;
+  refreshSignal: number;
+}) => {
+  const [promos, setPromos] = useState<PromoCode[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [search, setSearch] = useState('');
+  const [filter, setFilter] = useState<'TOUS' | 'ACTIFS' | 'EXPIRES' | 'INACTIFS'>('TOUS');
+  const [busyId, setBusyId] = useState<number | null>(null);
+
+  const load = useCallback(() => {
+    setLoading(true);
+    api.get('/codes-promo')
+      .then(res => setPromos(res.data.data || []))
+      .catch(() => setPromos([]))
+      .finally(() => setLoading(false));
+  }, []);
+
+  useEffect(() => {
+    if (isOpen) load();
+  }, [isOpen, refreshSignal, load]);
+
+  const isExpired = (p: PromoCode) => new Date(p.dateFin) < new Date();
+
+  const filtered = promos.filter(p => {
+    const matchSearch = p.code.toLowerCase().includes(search.toLowerCase()) ||
+      (p.description || '').toLowerCase().includes(search.toLowerCase());
+    if (!matchSearch) return false;
+    if (filter === 'ACTIFS') return p.actif && !isExpired(p);
+    if (filter === 'EXPIRES') return isExpired(p);
+    if (filter === 'INACTIFS') return !p.actif;
+    return true;
+  });
+
+  const handleToggle = async (promo: PromoCode) => {
+    setBusyId(promo.id);
+    try {
+      await api.patch(`/codes-promo/${promo.id}/toggle`);
+      toast.success(promo.actif ? `⏸️ ${promo.code} désactivé` : `▶️ ${promo.code} activé`);
+      load();
+    } catch (e: any) {
+      toast.error(e.response?.data?.message || 'Erreur');
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  const handleDelete = async (promo: PromoCode) => {
+    if (!confirm(`Supprimer définitivement le code "${promo.code}" ?`)) return;
+    setBusyId(promo.id);
+    try {
+      await api.delete(`/codes-promo/${promo.id}`);
+      toast.success(`🗑️ Code ${promo.code} supprimé`);
+      load();
+    } catch (e: any) {
+      toast.error(e.response?.data?.message || 'Erreur');
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  const inputCls = "w-full border border-gray-200 rounded-xl px-3 py-2 text-sm text-gray-900 focus:ring-2 focus:ring-palmier-400 outline-none";
+
+  return (
+    <Modal isOpen={isOpen} onClose={onClose} title="🎁 Gestion des codes promo" size="lg"
+      footer={
+        <div className="flex justify-between items-center w-full">
+          <span className="text-xs text-gray-400">{filtered.length} code{filtered.length !== 1 ? 's' : ''} affiché{filtered.length !== 1 ? 's' : ''}</span>
+          <div className="flex gap-2">
+            <button onClick={onClose} className="px-4 py-2 text-sm font-medium text-gray-600 hover:bg-gray-50 rounded-xl border border-gray-200 transition-colors">Fermer</button>
+            <button
+              onClick={onCreateNew}
+              className="px-4 py-2 text-sm font-medium text-white bg-gradient-to-r from-palmier-600 to-emerald-600 hover:from-palmier-700 hover:to-emerald-700 rounded-xl flex items-center gap-1.5 transition-all duration-200 shadow-sm"
+            >
+              <Plus size={14} /> Nouveau code
+            </button>
+          </div>
+        </div>
+      }
+    >
+      <div className="space-y-4">
+        <div className="flex flex-col sm:flex-row gap-2">
+          <div className="relative flex-1">
+            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+            <input
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              placeholder="Rechercher un code…"
+              className={inputCls + ' pl-9'}
+            />
+          </div>
+          <select value={filter} onChange={e => setFilter(e.target.value as any)} className={inputCls + ' bg-white sm:w-44'}>
+            <option value="TOUS">📊 Tous</option>
+            <option value="ACTIFS">✅ Actifs</option>
+            <option value="EXPIRES">⏰ Expirés</option>
+            <option value="INACTIFS">⏸️ Désactivés</option>
+          </select>
+        </div>
+
+        {loading ? (
+          <div className="py-14 flex flex-col items-center gap-2 text-gray-400">
+            <Loader2 size={28} className="animate-spin text-palmier-500" />
+            <p className="text-sm">Chargement des codes promo…</p>
+          </div>
+        ) : filtered.length === 0 ? (
+          <div className="py-14 text-center text-gray-400">
+            <PackageOpen size={40} className="mx-auto mb-2 opacity-40" />
+            <p className="text-sm font-medium">Aucun code promo trouvé</p>
+            <p className="text-xs text-gray-300 mt-1">
+              {search || filter !== 'TOUS' ? 'Essayez un autre filtre' : 'Créez votre premier code promotionnel'}
+            </p>
+          </div>
+        ) : (
+          <div className="space-y-2.5 max-h-[420px] overflow-y-auto pr-1">
+            {filtered.map(promo => {
+              const expired = isExpired(promo);
+              const joursRestants = getJoursRestantsPromo(promo.dateFin);
+              const statusLabel = expired ? 'Expiré' : promo.actif ? 'Actif' : 'Désactivé';
+              const statusClasses = expired
+                ? 'bg-gray-100 text-gray-500 border-gray-200'
+                : promo.actif
+                ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                : 'bg-amber-50 text-amber-600 border-amber-200';
+
+              return (
+                <div key={promo.id} className={`rounded-xl border p-3.5 transition-all duration-200 hover:shadow-sm ${expired ? 'bg-gray-50/60 border-gray-100' : 'bg-white border-gray-100'}`}>
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex items-start gap-3 min-w-0">
+                      <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${expired ? 'bg-gray-100' : 'bg-gradient-to-br from-amber-100 to-orange-100'}`}>
+                        <Gift size={17} className={expired ? 'text-gray-400' : 'text-amber-600'} />
+                      </div>
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <button
+                            onClick={() => copyToClipboard(promo.code)}
+                            className="font-mono font-bold text-gray-800 hover:text-palmier-600 transition-colors flex items-center gap-1 group"
+                            title="Copier le code"
+                          >
+                            {promo.code}
+                            <ClipboardCheck size={12} className="opacity-0 group-hover:opacity-100 transition-opacity text-palmier-500" />
+                          </button>
+                          <span className={`text-[10px] px-2 py-0.5 rounded-full border font-medium ${statusClasses}`}>
+                            {statusLabel}
+                          </span>
+                          {!expired && promo.actif && joursRestants <= 5 && (
+                            <span className="text-[10px] px-2 py-0.5 rounded-full border bg-red-50 text-red-600 border-red-200 flex items-center gap-1">
+                              <Clock size={9} /> {joursRestants}j
+                            </span>
+                          )}
+                        </div>
+                        {promo.description && (
+                          <p className="text-xs text-gray-500 mt-0.5 truncate">{promo.description}</p>
+                        )}
+                        <p className="text-[10px] text-gray-400 mt-1">
+                          Du {fmtDateFull(promo.dateDebut)} au {fmtDateFull(promo.dateFin)}
+                        </p>
+                        <div className="mt-2 w-40">
+                          <PromoUsageBar used={promo.nbUtilisations} max={promo.nbUtilisationsMax} />
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="flex flex-col items-end gap-2 shrink-0">
+                      <span className="text-base font-bold text-amber-600 whitespace-nowrap">
+                        {promo.tauxReduction ? `-${promo.tauxReduction}%` : promo.reductionFixe ? `-${formatEuro(promo.reductionFixe)}` : '—'}
+                      </span>
+                      <div className="flex items-center gap-1">
+                        <button
+                          onClick={() => handleToggle(promo)}
+                          disabled={busyId === promo.id || expired}
+                          title={promo.actif ? 'Désactiver' : 'Activer'}
+                          className={`p-1.5 rounded-lg transition-colors disabled:opacity-40 ${promo.actif ? 'text-emerald-500 hover:bg-emerald-50' : 'text-gray-400 hover:bg-gray-100'}`}
+                        >
+                          {busyId === promo.id ? <Loader2 size={16} className="animate-spin" /> : promo.actif ? <ToggleRight size={18} /> : <ToggleLeft size={18} />}
+                        </button>
+                        <button
+                          onClick={() => handleDelete(promo)}
+                          disabled={busyId === promo.id}
+                          title="Supprimer"
+                          className="p-1.5 rounded-lg text-red-400 hover:bg-red-50 hover:text-red-500 transition-colors disabled:opacity-40"
+                        >
+                          <Trash2 size={15} />
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    </Modal>
+  );
+};
+
+// ============================================
 // PAGE PRINCIPALE
 // ============================================
 
 export default function ChambresPage() {
   const [chambres, setChambres] = useState<Chambre[]>([]);
   const [reservationsActuelles, setReservationsActuelles] = useState<ReservationLight[]>([]);
-  const [statistiques, setStatistiques] = useState<ChambresResponse['statistiques']>({ 
-    total: 0, disponibles: 0, occupees: 0, maintenance: 0, bloques: 0, 
-    tauxOccupationGlobal: 0, revenusMois: 0 
+  const [statistiques, setStatistiques] = useState<ChambresResponse['statistiques']>({
+    total: 0, disponibles: 0, occupees: 0, maintenance: 0, bloques: 0,
+    tauxOccupationGlobal: 0, revenusMois: 0
   });
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
@@ -1563,10 +1812,11 @@ export default function ChambresPage() {
   const [showCodePromoModal, setShowCodePromoModal] = useState(false);
   const [showApplyPromoModal, setShowApplyPromoModal] = useState(false);
   const [showPromosActiveModal, setShowPromosActiveModal] = useState(false);
+  const [showGestionPromosModal, setShowGestionPromosModal] = useState(false);
+  const [promosRefreshSignal, setPromosRefreshSignal] = useState(0);
   const [saving, setSaving] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
-  const [autoRefresh, setAutoRefresh] = useState(true);
   const [lastRealtimeUpdate, setLastRealtimeUpdate] = useState<Date | null>(null);
 
   // ✅ WebSocket
@@ -1575,21 +1825,20 @@ export default function ChambresPage() {
   // ✅ Référence pour éviter les appels simultanés
   const isFetching = useRef(false);
 
-  // ✅ Fonction pour récupérer les données
+  // ✅ Fonction pour récupérer les données (rapide, sans passer par le cache)
   const fetchFreshData = useCallback(async () => {
-    // Éviter les appels simultanés
     if (isFetching.current) {
       console.log('⏳ [ChambresPage] Déjà en cours...');
       return;
     }
-    
+
     isFetching.current = true;
-    
+
     try {
       console.log('🔄 [ChambresPage] fetchFreshData');
       const response = await api.get('/chambres/avec-occupation');
       const data: ChambresResponse = response.data.data;
-      
+
       if (data?.chambres) {
         const chambresAvecOccupation = data.chambres.map(c => {
           const estOccupee = estChambreOccupeeActuellement(c, data.reservationsActuelles || []);
@@ -1600,16 +1849,17 @@ export default function ChambresPage() {
             codesPromoActifs: data.codesPromoActifs || []
           };
         });
-        
+
         setChambres(chambresAvecOccupation);
         setReservationsActuelles(data.reservationsActuelles || []);
-        setStatistiques(data.statistiques || { 
-          total: data.chambres.length, disponibles: 0, occupees: 0, 
-          maintenance: 0, bloques: 0, tauxOccupationGlobal: 0, revenusMois: 0 
+        setStatistiques(data.statistiques || {
+          total: data.chambres.length, disponibles: 0, occupees: 0,
+          maintenance: 0, bloques: 0, tauxOccupationGlobal: 0, revenusMois: 0
         });
         setCache(chambresAvecOccupation, data.reservationsActuelles || [], data.statistiques, data.codesPromoActifs);
         setLastRealtimeUpdate(new Date());
-        
+        setPromosRefreshSignal(s => s + 1);
+
         console.log('✅ [ChambresPage] Données mises à jour');
       }
     } catch (error) {
@@ -1620,7 +1870,7 @@ export default function ChambresPage() {
   }, []);
 
   const fetchChambres = useCallback(async (forceRefresh = false) => {
-    setLoading(true); 
+    setLoading(true);
     setIsRefreshing(true);
     try {
       if (!forceRefresh) {
@@ -1629,9 +1879,10 @@ export default function ChambresPage() {
           setChambres(cached.chambres);
           setReservationsActuelles(cached.reservationsActuelles);
           setStatistiques(cached.statistiques);
-          setLoading(false); 
+          setLoading(false);
           setIsRefreshing(false);
-          fetchFreshData().catch(() => {});
+          // ✅ Même avec le cache, on rafraîchit en tâche de fond via websocket-ready fetch
+          fetchFreshData();
           return;
         }
       }
@@ -1639,62 +1890,51 @@ export default function ChambresPage() {
     } catch {
       toast.error('Impossible de charger les chambres');
       const cached = getCache();
-      if (cached) { 
-        setChambres(cached.chambres); 
-        setReservationsActuelles(cached.reservationsActuelles); 
-        setStatistiques(cached.statistiques); 
+      if (cached) {
+        setChambres(cached.chambres);
+        setReservationsActuelles(cached.reservationsActuelles);
+        setStatistiques(cached.statistiques);
       }
-    } finally { 
-      setLoading(false); 
-      setIsRefreshing(false); 
+    } finally {
+      setLoading(false);
+      setIsRefreshing(false);
     }
   }, [fetchFreshData]);
 
   // ============================================
-  // ✅ WEBSOCKET + POLLING FORCÉ
+  // ✅ WEBSOCKET — TEMPS RÉEL, PAS DE POLLING
   // ============================================
 
-  // Écoute des événements WebSocket
   useEffect(() => {
     const handleRefresh = (e: Event) => {
       const detail = (e as CustomEvent).detail;
       console.log('🔄 [ChambresPage] WebSocket event:', detail);
       clearCache();
-      // Forcer le rafraîchissement immédiat
       fetchFreshData();
     };
 
     window.addEventListener('refresh-chambres', handleRefresh);
     window.addEventListener('chambre-updated', handleRefresh);
+    window.addEventListener('refresh-dashboard', handleRefresh);
 
     return () => {
       window.removeEventListener('refresh-chambres', handleRefresh);
       window.removeEventListener('chambre-updated', handleRefresh);
+      window.removeEventListener('refresh-dashboard', handleRefresh);
     };
   }, [fetchFreshData]);
 
-  // ✅ POLLING FORCÉ TOUTES LES 2 SECONDES
+  // ✅ Chargement initial
   useEffect(() => {
-    // Chargement initial
     fetchChambres();
-
-    // Polling toutes les 2 secondes pour forcer la mise à jour
-    const pollingInterval = setInterval(() => {
-      console.log('⏰ [ChambresPage] POLLING FORCÉ 2s');
-      clearCache();
-      fetchFreshData();
-    }, 2000);
-
-    return () => {
-      clearInterval(pollingInterval);
-    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // ============================================
   // FILTRAGE
   // ============================================
   const filtered = chambres.filter(c => {
-    const matchSearch = c.nom?.toLowerCase().includes(search.toLowerCase()) || 
+    const matchSearch = c.nom?.toLowerCase().includes(search.toLowerCase()) ||
                         c.numero?.toLowerCase().includes(search.toLowerCase());
     const statutAffichage = getStatutAffichage(c, reservationsActuelles);
     const matchStatut = filterStatut === 'TOUS' || statutAffichage === filterStatut;
@@ -1773,6 +2013,7 @@ export default function ChambresPage() {
       toast.success(`🎁 Code promo ${data.code} créé`);
       clearCache();
       await fetchChambres(true);
+      setPromosRefreshSignal(s => s + 1);
       setShowCodePromoModal(false);
     } catch (e: any) {
       toast.error(e.response?.data?.message || 'Erreur');
@@ -1791,7 +2032,7 @@ export default function ChambresPage() {
     try {
       await api.post(`/chambres/${selectedChambre.id}/appliquer-promo`, { code });
       toast.success(`🎁 Code promo ${code} appliqué`);
-      clearCache(); 
+      clearCache();
       await fetchChambres(true);
       setShowApplyPromoModal(false);
     } catch (e: any) {
@@ -1864,22 +2105,18 @@ export default function ChambresPage() {
                 <WifiOff size={11} /> Hors ligne
               </span>
             )}
-            <span className="text-gray-400 text-[10px]">
-              · Polling 2s
-            </span>
+            {lastRealtimeUpdate && (
+              <span className="text-gray-400 text-[10px]">
+                · {lastRealtimeUpdate.toLocaleTimeString('fr-FR')}
+              </span>
+            )}
           </div>
         </div>
         <div className="flex gap-2 flex-wrap">
-          <button 
-            onClick={() => setAutoRefresh(!autoRefresh)} 
-            className={`p-2 rounded-xl border transition-colors ${autoRefresh ? 'text-palmier-600 border-palmier-200 bg-palmier-50' : 'text-gray-400 border-gray-200 hover:bg-gray-50'}`}
-            title={autoRefresh ? 'Auto-refresh activé' : 'Auto-refresh désactivé'}
+          <button onClick={() => setShowGestionPromosModal(true)}
+            className="px-3 py-2 text-sm font-medium text-amber-700 bg-amber-50 hover:bg-amber-100 border border-amber-200 rounded-xl flex items-center gap-1.5 transition-all duration-200 shadow-sm hover:shadow-md"
           >
-            <RefreshCw size={15} className={autoRefresh ? 'animate-spin-slow' : ''} />
-          </button>
-          <button onClick={() => { clearCache(); fetchChambres(true); }} disabled={isRefreshing}
-            className="p-2 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-xl border border-gray-200 transition-colors">
-            <RefreshCw size={15} className={isRefreshing ? 'animate-spin' : ''} />
+            <Tag size={14} /> Gérer les promos
           </button>
           <button onClick={() => setShowCodePromoModal(true)}
             className="px-3 py-2 text-sm font-medium text-white bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 rounded-xl flex items-center gap-1.5 transition-all duration-200 shadow-sm hover:shadow-md"
@@ -1939,7 +2176,7 @@ export default function ChambresPage() {
           ))}
         </div>
 
-        <button 
+        <button
           onClick={() => { setSearch(''); setFilterStatut('TOUS'); }}
           className="px-3 py-2.5 text-sm text-gray-400 hover:text-gray-600 transition-colors"
         >
@@ -1957,7 +2194,7 @@ export default function ChambresPage() {
           </span>
         ))}
         <span className="text-gray-300 ml-2 text-[9px]">
-          {isConnected ? '⚡ Temps réel' : '🔄 Polling 2s'}
+          {isConnected ? '⚡ Temps réel' : '🔄 Veuillez reconnecter...'}
         </span>
         {lastRealtimeUpdate && (
           <span className="text-emerald-400 text-[9px]">
@@ -2011,6 +2248,12 @@ export default function ChambresPage() {
       <CodePromoModal isOpen={showCodePromoModal} onClose={() => setShowCodePromoModal(false)} onSave={handleCreateCodePromo} saving={saving} />
       <ApplyPromoModal chambre={selectedChambre} isOpen={showApplyPromoModal} onClose={() => { setShowApplyPromoModal(false); setSelectedChambre(null); }} onApply={handleApplyPromo} saving={saving} />
       <PromosActiveModal chambre={selectedChambre} isOpen={showPromosActiveModal} onClose={() => { setShowPromosActiveModal(false); setSelectedChambre(null); }} />
+      <GestionPromosModal
+        isOpen={showGestionPromosModal}
+        onClose={() => setShowGestionPromosModal(false)}
+        onCreateNew={() => { setShowGestionPromosModal(false); setShowCodePromoModal(true); }}
+        refreshSignal={promosRefreshSignal}
+      />
 
       <style>{`
         @keyframes fadeInDown {

@@ -25,6 +25,9 @@ router.get('/calendrier', controller.getCalendrier.bind(controller));
 // Consultation des arrivées et départs du jour
 router.get('/arrivees-departs-jour', controller.getArriveesDepartsJour.bind(controller));
 
+// ✅ Récupérer tous les codes promo actifs
+router.get('/codes-promo/actifs', controller.getActivePromoCodes.bind(controller));
+
 // ============================================
 // ROUTES PUBLIQUES
 // ============================================
@@ -58,5 +61,8 @@ router.delete('/:id/bloquer/:blocageId', isGerante, controller.debloquerDates.bi
 
 // Réservations futures par chambre
 router.get('/:id/reservations-futures', isGerante, controller.getReservationsFutures.bind(controller));
+
+// ✅ Appliquer un code promo à une chambre
+router.post('/:id/appliquer-promo', isGerante, controller.appliquerPromo.bind(controller));
 
 export default router;

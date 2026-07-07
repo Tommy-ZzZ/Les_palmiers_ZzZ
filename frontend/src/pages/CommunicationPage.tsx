@@ -19,11 +19,8 @@ import {
   MessageEmail,
   CommunicationStats,
   TypeMessage,
-  StatutEnvoi,
   ContactClient,
-  StatutClient,
-  SegmentClient,
-  CanalAcquisition
+  StatutClient
 } from '../types';
 
 // ============================================
@@ -251,10 +248,10 @@ const QuickStats = ({ stats, loading }: { stats: CommunicationStats | null; load
   }
 
   const items = [
-    { label: 'Emails envoyés', value: stats.totalEnvoyes, color: 'text-palmier-600', icon: <Mail size={18} /> },
-    { label: 'En attente', value: stats.enAttente, color: 'text-amber-600', icon: <Clock size={18} /> },
-    { label: `Ouverts (${stats.tauxOuverture}%)`, value: stats.ouverts, color: 'text-blue-600', icon: <Eye size={18} /> },
-    { label: 'Échecs', value: stats.echecs, color: 'text-red-600', icon: <XCircle size={18} /> }
+    { label: 'Emails envoyés', value: stats.totalEnvoyes, color: 'text-palmier-600', bg: 'bg-palmier-50', icon: <Mail size={18} /> },
+    { label: `Ouverts (${stats.tauxOuverture}%)`, value: stats.ouverts, color: 'text-blue-600', bg: 'bg-blue-50', icon: <Eye size={18} /> },
+    { label: 'En attente', value: stats.enAttente, color: 'text-amber-600', bg: 'bg-amber-50', icon: <Clock size={18} /> },
+    { label: 'Échecs', value: stats.echecs, color: 'text-red-600', bg: 'bg-red-50', icon: <XCircle size={18} /> }
   ];
 
   return (
@@ -272,7 +269,7 @@ const QuickStats = ({ stats, loading }: { stats: CommunicationStats | null; load
                 {item.label}
               </p>
             </div>
-            <div className={`p-2 rounded-xl bg-${item.color.split('-')[1]}-50`}>
+            <div className={`p-2 rounded-xl ${item.bg}`}>
               <span className={item.color}>{item.icon}</span>
             </div>
           </div>
@@ -913,16 +910,19 @@ const ContactsTab = ({
   contacts,
   loading,
   onRefresh,
-  onSendToClient
+  onSendToClient,
+  onSendGroupe
 }: {
   contacts: ContactClient[];
   loading: boolean;
   onRefresh: () => void;
   onSendToClient: (clientId: number) => void;
+  onSendGroupe: (clientIds: number[]) => Promise<void>;
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [filterStatut, setFilterStatut] = useState<string>('TOUS');
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
+  const [sendingGroupe, setSendingGroupe] = useState(false);
 
   const filtered = contacts.filter((c: ContactClient) => {
     const matchSearch = c.nom.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -937,6 +937,20 @@ const ContactsTab = ({
     regulier: contacts.filter((c: ContactClient) => c.statut === 'REGULIER').length,
     nouveau: contacts.filter((c: ContactClient) => c.statut === 'NOUVEAU').length,
     total: contacts.length
+  };
+
+  const handleSendGroupeClick = async () => {
+    const clientIds = filtered.map((c: ContactClient) => c.id);
+    if (clientIds.length === 0) {
+      toast('Aucun client sélectionné', { icon: 'ℹ️' });
+      return;
+    }
+    setSendingGroupe(true);
+    try {
+      await onSendGroupe(clientIds);
+    } finally {
+      setSendingGroupe(false);
+    }
   };
 
   if (loading) return <Spinner />;
@@ -982,17 +996,11 @@ const ContactsTab = ({
             </button>
           </div>
           <button
-            onClick={() => {
-              const clients = filtered.map((c: ContactClient) => c.id);
-              if (clients.length === 0) {
-                toast('Aucun client sélectionné', { icon: 'ℹ️' });
-                return;
-              }
-              toast.success(`Envoi à ${clients.length} client(s)`);
-            }}
-            className="px-4 py-2.5 bg-palmier-600 text-white rounded-xl text-sm hover:bg-palmier-700 flex items-center gap-2 transition-all hover:scale-105 active:scale-95"
+            onClick={handleSendGroupeClick}
+            disabled={sendingGroupe}
+            className="px-4 py-2.5 bg-palmier-600 text-white rounded-xl text-sm hover:bg-palmier-700 flex items-center gap-2 transition-all hover:scale-105 active:scale-95 disabled:opacity-50 disabled:hover:scale-100"
           >
-            <Send size={16} />
+            {sendingGroupe ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}
             Envoyer à plusieurs
           </button>
           <button
@@ -1366,6 +1374,21 @@ const CommunicationPage: React.FC = () => {
     }
   };
 
+  const handleSendGroupe = async (clientIds: number[]) => {
+    try {
+      const response = await communicationService.envoyerRelanceGroupe(clientIds);
+      if (response.success) {
+        toast.success(response.message || `${response.count} relance(s) envoyée(s) avec succès`);
+        await loadData();
+      } else {
+        toast.error(response.message || 'Erreur lors de l\'envoi groupé');
+      }
+    } catch (error) {
+      console.error('Erreur envoi groupé:', error);
+      toast.error('Erreur lors de l\'envoi groupé');
+    }
+  };
+
   const handleUpdateModele = async (modele: ModeleMessage) => {
     const response = await communicationService.updateModele(modele.id, modele);
     if (response.success) {
@@ -1547,6 +1570,7 @@ const CommunicationPage: React.FC = () => {
               loading={loading}
               onRefresh={loadData}
               onSendToClient={handleSendToClient}
+              onSendGroupe={handleSendGroupe}
             />
           )}
         </div>

@@ -1,7 +1,7 @@
 // backend/src/controllers/chambres.controller.ts
 import { Request, Response } from 'express';
-import { Op } from 'sequelize';
-import { Room, Tariff, RoomEquipment, Equipment, RoomBlock, Reservation, User, Client } from '../models';
+import { Op, Sequelize } from 'sequelize';
+import { Room, Tariff, RoomEquipment, Equipment, RoomBlock, Reservation, User, Client, PromoCode } from '../models';
 import { WebSocketManager } from '../websocket/server';
 
 export class ChambresController {
@@ -48,6 +48,37 @@ export class ChambresController {
     if (mois === 7 || mois === 8 || mois === 12) return 'HAUTE';
     if ((mois >= 4 && mois <= 6) || (mois >= 9 && mois <= 10)) return 'MOYENNE';
     return 'BASSE';
+  }
+
+  /**
+   * ✅ AJOUT : Récupérer les codes promo actifs pour une chambre
+   * ✅ CORRECTION : Utilisation des noms réels de colonnes SQL (snake_case)
+   *    dans Sequelize.col(), car Sequelize.col() ne traduit PAS le mapping
+   *    `field:` défini dans le modèle (contrairement aux clés du `where` classique).
+   *    => nbUtilisations  -> nb_utilisations
+   *       nbUtilisationsMax -> nb_utilisations_max
+   */
+  private async getActivePromoCodesForChambre(chambreId: number): Promise<PromoCode[]> {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    const promos = await PromoCode.findAll({
+      where: {
+        actif: true,
+        dateDebut: { [Op.lte]: today },
+        dateFin: { [Op.gte]: today },
+        [Op.or]: [
+          { nbUtilisationsMax: null },
+          Sequelize.where(
+            Sequelize.col('nb_utilisations'),
+            Op.lt,
+            Sequelize.col('nb_utilisations_max')
+          )
+        ]
+      }
+    });
+
+    return promos;
   }
 
   getAll = async (req: Request, res: Response) => {
@@ -102,6 +133,9 @@ export class ChambresController {
 
         const equipementsList = chambreJson.equipements?.map((e: any) => e.nom) || [];
 
+        // ✅ Récupérer les codes promo actifs
+        const codesPromoActifs = await this.getActivePromoCodesForChambre(chambre.id);
+
         return {
           ...chambreJson,
           statut: statutAffichage,
@@ -112,7 +146,8 @@ export class ChambresController {
           tarif_lit_supp: currentTarif.prixLitSupplementaire,
           tarif_petit_dejeuner: currentTarif.prixPetitDejeuner,
           tarifs_complets: tarifsBySaison,
-          saison_actuelle: currentSeason
+          saison_actuelle: currentSeason,
+          codesPromoActifs: codesPromoActifs
         };
       }));
 
@@ -397,12 +432,14 @@ export class ChambresController {
       }
 
       const statutAffichage = await this.calculerStatutAffichage(chambre);
+      const codesPromoActifs = await this.getActivePromoCodesForChambre(chambre.id);
 
       return res.status(200).json({
         success: true,
         data: {
           ...chambre.toJSON(),
-          statut: statutAffichage
+          statut: statutAffichage,
+          codesPromoActifs: codesPromoActifs
         }
       });
 
@@ -426,6 +463,15 @@ export class ChambresController {
             equipementId
           }))
         );
+      }
+
+      const wsManager = (req as any).wsManager as WebSocketManager;
+      if (wsManager) {
+        wsManager.broadcastToAll({
+          type: 'REFRESH_CHAMBRES',
+          data: { reason: 'chambre_created', chambreId: chambre.id },
+          timestamp: new Date().toISOString()
+        });
       }
 
       return res.status(201).json({
@@ -467,6 +513,15 @@ export class ChambresController {
         );
       }
 
+      const wsManager = (req as any).wsManager as WebSocketManager;
+      if (wsManager) {
+        wsManager.broadcastToAll({
+          type: 'REFRESH_CHAMBRES',
+          data: { reason: 'chambre_updated', chambreId: id },
+          timestamp: new Date().toISOString()
+        });
+      }
+
       return res.status(200).json({
         success: true,
         message: 'Chambre mise à jour avec succès',
@@ -495,6 +550,15 @@ export class ChambresController {
       }
 
       await chambre.destroy();
+
+      const wsManager = (req as any).wsManager as WebSocketManager;
+      if (wsManager) {
+        wsManager.broadcastToAll({
+          type: 'REFRESH_CHAMBRES',
+          data: { reason: 'chambre_deleted', chambreId: id },
+          timestamp: new Date().toISOString()
+        });
+      }
 
       return res.status(200).json({
         success: true,
@@ -755,6 +819,15 @@ export class ChambresController {
         })
       );
 
+      const wsManager = (req as any).wsManager as WebSocketManager;
+      if (wsManager) {
+        wsManager.broadcastToAll({
+          type: 'REFRESH_CHAMBRES',
+          data: { reason: 'tarifs_updated', chambreId: id },
+          timestamp: new Date().toISOString()
+        });
+      }
+
       return res.status(200).json({
         success: true,
         message: 'Tarifs mis à jour avec succès',
@@ -1012,6 +1085,9 @@ export class ChambresController {
         });
         const equipementsList = chambreJson.equipements?.map((e: any) => e.nom) || [];
 
+        // ✅ Récupérer les codes promo actifs
+        const codesPromoActifs = await this.getActivePromoCodesForChambre(chambre.id);
+
         if (statutAffichage === 'DISPONIBLE' && !estOccupee) stats.disponibles++;
         else if (estOccupee) stats.occupees++;
         else if (statutAffichage === 'EN_MAINTENANCE' || statutAffichage === 'HORS_SERVICE') stats.maintenance++;
@@ -1072,7 +1148,8 @@ export class ChambresController {
             client_prenom: r.client?.prenom || ''
           })),
           blocagesActifs: chambreBlocages,
-          joursDisponiblesConsecutifs
+          joursDisponiblesConsecutifs,
+          codesPromoActifs: codesPromoActifs
         };
       }));
 
@@ -1144,6 +1221,15 @@ export class ChambresController {
         client_prenom: r.client?.prenom || ''
       }));
 
+      // ✅ Récupérer les codes promo actifs pour toutes les chambres
+      const allCodesPromo = await PromoCode.findAll({
+        where: {
+          actif: true,
+          dateDebut: { [Op.lte]: today },
+          dateFin: { [Op.gte]: today }
+        }
+      });
+
       return res.status(200).json({
         success: true,
         data: {
@@ -1151,7 +1237,8 @@ export class ChambresController {
           reservationsActuelles: reservationsActuellesGlobal,
           statistiques: stats,
           prochainesArrivees,
-          prochainsDeparts
+          prochainsDeparts,
+          codesPromoActifs: allCodesPromo
         }
       });
 
@@ -1160,6 +1247,132 @@ export class ChambresController {
       return res.status(500).json({
         success: false,
         message: 'Erreur lors de la récupération des chambres avec occupation'
+      });
+    }
+  };
+
+  /**
+   * ✅ AJOUT : Appliquer un code promo à une chambre
+   */
+  appliquerPromo = async (req: Request, res: Response) => {
+    try {
+      const { id } = req.params;
+      const { code } = req.body;
+      const userId = (req as any).user?.id;
+
+      if (!code) {
+        return res.status(400).json({
+          success: false,
+          message: 'Le code promo est requis'
+        });
+      }
+
+      const chambre = await Room.findByPk(id);
+      if (!chambre) {
+        return res.status(404).json({
+          success: false,
+          message: 'Chambre non trouvée'
+        });
+      }
+
+      const promo = await PromoCode.findOne({
+        where: {
+          code: { [Op.iLike]: code.toUpperCase() },
+          actif: true,
+          dateDebut: { [Op.lte]: new Date() },
+          dateFin: { [Op.gte]: new Date() }
+        }
+      });
+
+      if (!promo) {
+        return res.status(404).json({
+          success: false,
+          message: 'Code promo invalide ou expiré'
+        });
+      }
+
+      // Vérifier si le code a atteint son nombre d'utilisations maximum
+      if (promo.nbUtilisationsMax && promo.nbUtilisations >= promo.nbUtilisationsMax) {
+        return res.status(400).json({
+          success: false,
+          message: 'Ce code promo a atteint son nombre maximum d\'utilisations'
+        });
+      }
+
+      // Incrémenter le nombre d'utilisations
+      await promo.increment('nbUtilisations');
+
+      // ✅ Émettre un événement WebSocket
+      const wsManager = (req as any).wsManager as WebSocketManager;
+      if (wsManager) {
+        wsManager.broadcastToAll({
+          type: 'REFRESH_CHAMBRES',
+          data: { reason: 'promo_applied', chambreId: id, code: promo.code },
+          timestamp: new Date().toISOString()
+        });
+      }
+
+      return res.status(200).json({
+        success: true,
+        message: `Code promo ${promo.code} appliqué avec succès`,
+        data: {
+          promo: {
+            id: promo.id,
+            code: promo.code,
+            description: promo.description,
+            tauxReduction: promo.tauxReduction,
+            reductionFixe: promo.reductionFixe,
+            nbUtilisations: promo.nbUtilisations,
+            nbUtilisationsMax: promo.nbUtilisationsMax
+          }
+        }
+      });
+
+    } catch (error) {
+      console.error('Erreur appliquerPromo:', error);
+      return res.status(500).json({
+        success: false,
+        message: 'Erreur lors de l\'application du code promo'
+      });
+    }
+  };
+
+  /**
+   * ✅ AJOUT : Récupérer tous les codes promo actifs
+   * ✅ CORRECTION : mêmes noms de colonnes SQL réels (snake_case) dans Sequelize.col()
+   */
+  getActivePromoCodes = async (req: Request, res: Response) => {
+    try {
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+
+      const promos = await PromoCode.findAll({
+        where: {
+          actif: true,
+          dateDebut: { [Op.lte]: today },
+          dateFin: { [Op.gte]: today },
+          [Op.or]: [
+            { nbUtilisationsMax: null },
+            Sequelize.where(
+              Sequelize.col('nb_utilisations'),
+              Op.lt,
+              Sequelize.col('nb_utilisations_max')
+            )
+          ]
+        },
+        order: [['created_at', 'DESC']]
+      });
+
+      return res.status(200).json({
+        success: true,
+        data: promos
+      });
+
+    } catch (error) {
+      console.error('Erreur getActivePromoCodes:', error);
+      return res.status(500).json({
+        success: false,
+        message: 'Erreur lors de la récupération des codes promo'
       });
     }
   };

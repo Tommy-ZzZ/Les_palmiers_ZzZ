@@ -1,5 +1,5 @@
 // backend/src/services/email.service.ts
-import { Reservation, Client, Room, EmailTemplate, SentEmail, Message, MessageEmail } from '../models';
+import { Reservation, Client, Room, EmailTemplate, SentEmail, MessageEmail } from '../models';
 import nodemailer from 'nodemailer';
 import { Op } from 'sequelize';
 import dotenv from 'dotenv';
@@ -8,29 +8,88 @@ dotenv.config();
 
 export class EmailService {
   private transporter: nodemailer.Transporter;
+  private isConfigured: boolean = false;
 
   constructor() {
-    this.transporter = nodemailer.createTransport({
-      host: process.env.SMTP_HOST || 'ssl0.ovh.net',
-      port: parseInt(process.env.SMTP_PORT || '587'),
-      secure: false,
-      auth: {
-        user: process.env.SMTP_USER || 'contact@les-palmiers.re',
-        pass: process.env.SMTP_PASS || ''
+    const host = process.env.SMTP_HOST;
+    const user = process.env.SMTP_USER;
+    const pass = process.env.SMTP_PASS;
+
+    // ✅ Vérification des credentials
+    if (host && user && pass && user !== 'contact@lespalmiers-reunion.re' || pass) {
+      // ✅ Correction : on vérifie que les credentials ne sont pas ceux par défaut
+      const hasValidCreds = user && pass && 
+                           !user.includes('votre_email') && 
+                           !pass.includes('votre_mot_de_passe');
+      
+      if (hasValidCreds) {
+        this.transporter = nodemailer.createTransport({
+          host: host,
+          port: parseInt(process.env.SMTP_PORT || '587'),
+          secure: process.env.SMTP_SECURE === 'true' || false,
+          auth: {
+            user: user,
+            pass: pass
+          },
+          tls: {
+            rejectUnauthorized: false
+          }
+        });
+        this.isConfigured = true;
+        console.log('📧 Service email configuré avec OVH');
+      } else {
+        console.log('⚠️ Service email: credentials par défaut non configurés');
+        this.isConfigured = false;
       }
-    });
+    } else {
+      console.log('⚠️ Service email: variables d\'environnement SMTP manquantes');
+      this.isConfigured = false;
+    }
+
+    // ✅ Fallback pour le développement : Ethereal (faux SMTP de test)
+    if (!this.isConfigured && process.env.NODE_ENV === 'development') {
+      console.log('📧 Service email: utilisation d\'Ethereal (mode test)');
+      // Créer un transporteur factice qui log seulement
+      this.transporter = {
+        sendMail: async (mailOptions: any) => {
+          console.log('📧 [DEV] Email simulé:');
+          console.log(`  To: ${mailOptions.to}`);
+          console.log(`  Subject: ${mailOptions.subject}`);
+          console.log(`  Body: ${mailOptions.html?.substring(0, 200)}...`);
+          return { messageId: `dev-${Date.now()}` };
+        }
+      } as any;
+      this.isConfigured = true;
+    }
   }
 
-  // ─── METHODES PRINCIPALES D'ENVOI ──────────────────────────────────────────
+  // ─── METHODE D'ENVOI PRINCIPALE ─────────────────────────────────────────────
 
   async envoyerViaOVH(to: string, subject: string, html: string): Promise<{ success: boolean; error?: string }> {
+    if (!this.isConfigured) {
+      console.warn('📧 [Email] Service non configuré, simulation d\'envoi');
+      console.log(`  To: ${to}`);
+      console.log(`  Subject: ${subject}`);
+      return { success: true, error: 'SIMULATION: service non configuré' };
+    }
+
     try {
-      await this.transporter.sendMail({
-        from: process.env.SMTP_FROM || 'contact@les-palmiers.re',
-        to,
-        subject,
-        html
+      const from = process.env.SMTP_FROM || process.env.SMTP_USER || 'contact@lespalmiers-reunion.re';
+      
+      const info = await this.transporter.sendMail({
+        from: from,
+        to: to,
+        subject: subject,
+        html: html,
+        // Headers pour améliorer la délivrabilité
+        headers: {
+          'X-Mailer': 'Les Palmiers - Gîte de charme',
+          'X-Priority': '3',
+          'List-Unsubscribe': `<mailto:${from}?subject=unsubscribe>`
+        }
       });
+
+      console.log(`📧 [Email] Envoyé à ${to} - ID: ${info.messageId}`);
       return { success: true };
     } catch (error: any) {
       console.error('[OVH] Erreur d\'envoi:', error.message);
@@ -85,18 +144,30 @@ export class EmailService {
         return;
       }
 
-      const template = await EmailTemplate.findOne({
-        where: { typeEmail: 'CONFIRMATION', actif: true }
+      // ✅ Récupérer le template depuis la table Message (qui stocke les modèles)
+      const template = await Message.findOne({
+        where: { type: 'CONFIRMATION', valide: true }
       });
 
-      if (!template) {
-        console.log('[Email] Template CONFIRMATION non trouvé');
-        return;
-      }
+      let sujet = `Confirmation de réservation - ${reservation.numero || ''}`;
+      let corps = `
+        <h1>Confirmation de réservation</h1>
+        <p>Bonjour ${reservation.client.prenom} ${reservation.client.nom},</p>
+        <p>Nous confirmons votre réservation du ${new Date(reservation.dateArrivee).toLocaleDateString('fr-FR')} au ${new Date(reservation.dateDepart).toLocaleDateString('fr-FR')}.</p>
+        <p>Chambre : ${reservation.chambre?.nom || ''}</p>
+        <p>Montant total : ${reservation.montantTotal || 0} €</p>
+        <p>Acompte versé : ${reservation.montantAcompte || 0} €</p>
+        <p>Solde restant : ${(reservation.montantTotal || 0) - (reservation.montantAcompte || 0)} €</p>
+        <br>
+        <p>Cordialement,</p>
+        <p>L'équipe des Palmiers de l'Entre-Deux</p>
+      `;
 
-      const variables = this.prepareVariables(reservation);
-      const sujet = this.remplacerVariables(template.sujet, variables);
-      const corps = this.remplacerVariables(template.corps, variables);
+      if (template) {
+        const variables = this.prepareVariables(reservation);
+        sujet = this.remplacerVariables(template.sujet, variables);
+        corps = this.remplacerVariables(template.corps, variables);
+      }
 
       await this.envoyerEmailAvecHistorique(
         reservation.client.email,
@@ -104,12 +175,13 @@ export class EmailService {
         corps,
         'CONFIRMATION',
         reservation.client.id,
-        reservation.id
+        reservation.id,
+        template?.id
       );
 
       await SentEmail.create({
         reservationId,
-        modeleId: template.id,
+        modeleId: template?.id,
         destinataire: reservation.client.email,
         sujet,
         contenu: corps,
@@ -133,18 +205,34 @@ export class EmailService {
 
       if (!reservation || !reservation.client) return;
 
-      const template = await EmailTemplate.findOne({
-        where: { typeEmail: 'RAPPEL_J_MOINS_7', actif: true }
+      const template = await Message.findOne({
+        where: { type: 'RAPPEL_J7', valide: true }
       });
 
-      if (!template) {
-        console.log('[Email] Template RAPPEL_J_MOINS_7 non trouvé');
-        return;
-      }
+      let sujet = `Rappel : Votre séjour aux Palmiers commence dans 7 jours`;
+      let corps = `
+        <h1>Rappel de séjour</h1>
+        <p>Bonjour ${reservation.client.prenom} ${reservation.client.nom},</p>
+        <p>Votre séjour aux Palmiers de l'Entre-Deux commence dans 7 jours !</p>
+        <p>Dates : du ${new Date(reservation.dateArrivee).toLocaleDateString('fr-FR')} au ${new Date(reservation.dateDepart).toLocaleDateString('fr-FR')}</p>
+        <p>Chambre : ${reservation.chambre?.nom || ''}</p>
+        <br>
+        <p>Informations pratiques :</p>
+        <ul>
+          <li>Arrivée à partir de 15h</li>
+          <li>Départ avant 11h</li>
+          <li>Petit-déjeuner servi de 7h à 10h</li>
+        </ul>
+        <br>
+        <p>Au plaisir de vous accueillir,</p>
+        <p>L'équipe des Palmiers de l'Entre-Deux</p>
+      `;
 
-      const variables = this.prepareVariables(reservation);
-      const sujet = this.remplacerVariables(template.sujet, variables);
-      const corps = this.remplacerVariables(template.corps, variables);
+      if (template) {
+        const variables = this.prepareVariables(reservation);
+        sujet = this.remplacerVariables(template.sujet, variables);
+        corps = this.remplacerVariables(template.corps, variables);
+      }
 
       await this.envoyerEmailAvecHistorique(
         reservation.client.email,
@@ -152,7 +240,8 @@ export class EmailService {
         corps,
         'RAPPEL_J7',
         reservation.client.id,
-        reservation.id
+        reservation.id,
+        template?.id
       );
 
       console.log(`[Email] Rappel J-7 envoyé à ${reservation.client.email}`);
@@ -172,18 +261,26 @@ export class EmailService {
 
       if (!reservation || !reservation.client) return;
 
-      const template = await EmailTemplate.findOne({
-        where: { typeEmail: 'REMERCIEMENT_J_PLUS_2', actif: true }
+      const template = await Message.findOne({
+        where: { type: 'REMERCIEMENT_J2', valide: true }
       });
 
-      if (!template) {
-        console.log('[Email] Template REMERCIEMENT_J_PLUS_2 non trouvé');
-        return;
-      }
+      let sujet = `Merci pour votre séjour aux Palmiers !`;
+      let corps = `
+        <h1>Merci pour votre séjour !</h1>
+        <p>Bonjour ${reservation.client.prenom} ${reservation.client.nom},</p>
+        <p>Nous espérons que votre séjour aux Palmiers de l'Entre-Deux s'est bien passé.</p>
+        <p>N'hésitez pas à nous laisser un avis, nous serions ravis de vous accueillir à nouveau.</p>
+        <br>
+        <p>À bientôt,</p>
+        <p>L'équipe des Palmiers de l'Entre-Deux</p>
+      `;
 
-      const variables = this.prepareVariables(reservation);
-      const sujet = this.remplacerVariables(template.sujet, variables);
-      const corps = this.remplacerVariables(template.corps, variables);
+      if (template) {
+        const variables = this.prepareVariables(reservation);
+        sujet = this.remplacerVariables(template.sujet, variables);
+        corps = this.remplacerVariables(template.corps, variables);
+      }
 
       await this.envoyerEmailAvecHistorique(
         reservation.client.email,
@@ -191,7 +288,8 @@ export class EmailService {
         corps,
         'REMERCIEMENT_J2',
         reservation.client.id,
-        reservation.id
+        reservation.id,
+        template?.id
       );
 
       console.log(`[Email] Remerciement J+2 envoyé à ${reservation.client.email}`);
@@ -211,23 +309,27 @@ export class EmailService {
 
       if (!reservation || !reservation.client) return;
 
-      const template = await EmailTemplate.findOne({
-        where: { typeEmail: 'ANNULATION', actif: true }
+      const template = await Message.findOne({
+        where: { type: 'ANNULATION', valide: true }
       });
 
-      if (!template) {
-        console.log('[Email] Template ANNULATION non trouvé');
-        return;
+      let sujet = `Annulation de réservation - ${reservation.numero || ''}`;
+      let corps = `
+        <h1>Annulation de réservation</h1>
+        <p>Bonjour ${reservation.client.prenom} ${reservation.client.nom},</p>
+        <p>Nous accusons réception de votre annulation pour la réservation ${reservation.numero || ''}.</p>
+        <p>Pénalité appliquée : ${penalite} €</p>
+        <p>Conditions : Annulation gratuite jusqu'à 7 jours avant, 50% entre 7 et 2 jours, 100% moins de 2 jours</p>
+        <br>
+        <p>Cordialement,</p>
+        <p>L'équipe des Palmiers de l'Entre-Deux</p>
+      `;
+
+      if (template) {
+        const variables = { ...this.prepareVariables(reservation), penalite };
+        sujet = this.remplacerVariables(template.sujet, variables);
+        corps = this.remplacerVariables(template.corps, variables);
       }
-
-      const variables = {
-        ...this.prepareVariables(reservation),
-        penalite: penalite,
-        conditions_annulation: "Annulation gratuite jusqu'à 7 jours avant, 50% entre 7 et 2 jours, 100% moins de 2 jours"
-      };
-
-      const sujet = this.remplacerVariables(template.sujet, variables);
-      const corps = this.remplacerVariables(template.corps, variables);
 
       await this.envoyerEmailAvecHistorique(
         reservation.client.email,
@@ -235,7 +337,8 @@ export class EmailService {
         corps,
         'ANNULATION',
         reservation.client.id,
-        reservation.id
+        reservation.id,
+        template?.id
       );
 
       console.log(`[Email] Annulation envoyée à ${reservation.client.email}`);
@@ -255,23 +358,30 @@ export class EmailService {
 
       if (!reservation || !reservation.client) return;
 
-      const template = await EmailTemplate.findOne({
-        where: { typeEmail: 'RELANCE_IMPAYE', actif: true }
+      const template = await Message.findOne({
+        where: { type: 'RELANCE_PAIEMENT', valide: true }
       });
 
-      if (!template) {
-        console.log('[Email] Template RELANCE_IMPAYE non trouvé');
-        return;
+      const solde = (reservation.montantTotal || 0) - (reservation.montantAcompte || 0);
+
+      let sujet = `Rappel de paiement - Réservation ${reservation.numero || ''}`;
+      let corps = `
+        <h1>Rappel de paiement</h1>
+        <p>Bonjour ${reservation.client.prenom} ${reservation.client.nom},</p>
+        <p>Nous vous rappelons qu'un paiement est en attente pour votre réservation.</p>
+        <p>Solde restant : ${solde} €</p>
+        <p>Date limite : ${new Date(reservation.dateArrivee).toLocaleDateString('fr-FR')}</p>
+        <br>
+        <p>Merci de régulariser votre situation.</p>
+        <p>Cordialement,</p>
+        <p>L'équipe des Palmiers de l'Entre-Deux</p>
+      `;
+
+      if (template) {
+        const variables = { ...this.prepareVariables(reservation), solde };
+        sujet = this.remplacerVariables(template.sujet, variables);
+        corps = this.remplacerVariables(template.corps, variables);
       }
-
-      const variables = {
-        ...this.prepareVariables(reservation),
-        solde: reservation.montantTotal - reservation.montantAcompte,
-        date_limite_paiement: new Date(reservation.dateArrivee).toLocaleDateString('fr-FR')
-      };
-
-      const sujet = this.remplacerVariables(template.sujet, variables);
-      const corps = this.remplacerVariables(template.corps, variables);
 
       await this.envoyerEmailAvecHistorique(
         reservation.client.email,
@@ -279,7 +389,8 @@ export class EmailService {
         corps,
         'RELANCE_PAIEMENT',
         reservation.client.id,
-        reservation.id
+        reservation.id,
+        template?.id
       );
 
       console.log(`[Email] Relance paiement envoyée à ${reservation.client.email}`);
@@ -343,7 +454,7 @@ export class EmailService {
 
     const reservations = await Reservation.findAll({
       where: {
-        date_arrivee: {
+        dateArrivee: {
           [Op.between]: [dateCible, new Date(dateCible.getTime() + 24 * 60 * 60 * 1000)]
         },
         statut: 'CONFIRMEE'
@@ -369,7 +480,7 @@ export class EmailService {
 
     const reservations = await Reservation.findAll({
       where: {
-        date_depart: {
+        dateDepart: {
           [Op.between]: [dateCible, new Date(dateCible.getTime() + 24 * 60 * 60 * 1000)]
         },
         statut: 'TERMINEE'
@@ -395,7 +506,7 @@ export class EmailService {
       include: [{ model: Client, as: 'client' }]
     });
 
-    const impayes = reservations.filter(r => r.montantRestantDu > 0);
+    const impayes = reservations.filter(r => (r.montantTotal || 0) - (r.montantAcompte || 0) > 0);
 
     console.log(`[CRON] ${impayes.length} réservations avec impayés`);
 
@@ -410,7 +521,7 @@ export class EmailService {
     }
   }
 
-  // ─── SUBSTITUTION AVEC OBJET COMPLET ──────────────────────────────────────
+  // ─── SUBSTITUTION AVEC OBJET COMPLET (utilisée par le contrôleur Communication) ──
 
   substituerVariables(template: string, data: { client: Client; reservationId?: number; reservation?: Reservation }): string {
     const client = data.client;
@@ -429,40 +540,67 @@ export class EmailService {
     result = result.replace(/{{email_gite}}/g, "contact@lespalmiers-reunion.re");
 
     if (reservation) {
-      const arrivee = new Date(reservation.date_arrivee);
-      const depart = new Date(reservation.date_depart);
+      const arrivee = new Date((reservation as any).dateArrivee);
+      const depart = new Date((reservation as any).dateDepart);
       const nbNuits = Math.ceil((depart.getTime() - arrivee.getTime()) / (1000 * 60 * 60 * 24));
 
       result = result.replace(/{{date_arrivee}}/g, arrivee.toLocaleDateString('fr-FR'));
       result = result.replace(/{{date_depart}}/g, depart.toLocaleDateString('fr-FR'));
-      result = result.replace(/{{numero_reservation}}/g, reservation.numero || '');
-      result = result.replace(/{{montant_total}}/g, String(reservation.montantTotal || 0));
-      result = result.replace(/{{acompte}}/g, String(reservation.montantAcompte || 0));
-      result = result.replace(/{{solde}}/g, String((reservation.montantTotal || 0) - (reservation.montantAcompte || 0)));
-      result = result.replace(/{{nb_adultes}}/g, String(reservation.nbAdultes || 0));
-      result = result.replace(/{{nb_enfants}}/g, String(reservation.nbEnfants || 0));
+      result = result.replace(/{{numero_reservation}}/g, (reservation as any).numero || '');
+      result = result.replace(/{{montant_total}}/g, String((reservation as any).montantTotal || 0));
+      result = result.replace(/{{acompte}}/g, String((reservation as any).montantAcompte || 0));
+      result = result.replace(/{{solde}}/g, String(((reservation as any).montantTotal || 0) - ((reservation as any).montantAcompte || 0)));
+      result = result.replace(/{{nb_adultes}}/g, String((reservation as any).nbAdultes || 0));
+      result = result.replace(/{{nb_enfants}}/g, String((reservation as any).nbEnfants || 0));
       result = result.replace(/{{nb_nuits}}/g, String(nbNuits));
 
-      if (reservation.chambre) {
-        const chambre = reservation.chambre as any;
+      const chambre = (reservation as any).chambre;
+      if (chambre) {
         result = result.replace(/{{chambre_nom}}/g, chambre.nom || '');
         result = result.replace(/{{chambre_numero}}/g, chambre.numero || '');
       }
-    }
 
-    result = result.replace(/{{conditions_annulation}}/g, "Annulation gratuite jusqu'à 7 jours avant l'arrivée, 50% entre 7 et 2 jours, 100% moins de 2 jours");
-
-    if (reservation) {
-      const dateLimite = new Date(reservation.date_arrivee);
+      const dateLimite = new Date((reservation as any).dateArrivee);
       dateLimite.setDate(dateLimite.getDate() - 7);
       result = result.replace(/{{date_limite_paiement}}/g, dateLimite.toLocaleDateString('fr-FR'));
     }
+
+    result = result.replace(/{{conditions_annulation}}/g, "Annulation gratuite jusqu'à 7 jours avant l'arrivée, 50% entre 7 et 2 jours, 100% moins de 2 jours");
 
     return result;
   }
 
   async envoyerViaOVHSimple(params: { to: string; subject: string; html: string }) {
     return this.envoyerViaOVH(params.to, params.subject, params.html);
+  }
+
+  // ✅ AJOUT : méthode pour tester la configuration email
+  async testerConfigEmail(): Promise<{ success: boolean; message: string }> {
+    if (!this.isConfigured) {
+      return { success: false, message: 'Service email non configuré' };
+    }
+
+    try {
+      // Tester l'envoi à soi-même
+      const testEmail = process.env.SMTP_FROM || process.env.SMTP_USER;
+      if (!testEmail) {
+        return { success: false, message: 'Aucun email de test configuré' };
+      }
+
+      const result = await this.envoyerViaOVH(
+        testEmail,
+        'Test - Configuration email Les Palmiers',
+        '<h1>Test réussi !</h1><p>Votre configuration email fonctionne correctement.</p>'
+      );
+
+      if (result.success) {
+        return { success: true, message: `Email de test envoyé à ${testEmail}` };
+      } else {
+        return { success: false, message: result.error || 'Erreur inconnue' };
+      }
+    } catch (error: any) {
+      return { success: false, message: error.message };
+    }
   }
 }
 
@@ -474,7 +612,8 @@ export const envoyerRappelsJMoins7 = () => emailService.envoyerRappelsJMoins7();
 export const envoyerRemerciementsJPlus2 = () => emailService.envoyerRemerciementsJPlus2();
 export const marquerImpayes = () => emailService.marquerImpayes();
 export const envoyerViaOVH = (params: { to: string; subject: string; html: string }) => emailService.envoyerViaOVHSimple(params);
-export const substituerVariables = (template: string, data: { client: Client; reservationId?: number; reservation?: Reservation }) => 
+export const substituerVariables = (template: string, data: { client: Client; reservationId?: number; reservation?: Reservation }) =>
   emailService.substituerVariables(template, data);
+export const testerConfigEmail = () => emailService.testerConfigEmail();
 
 export default emailService;

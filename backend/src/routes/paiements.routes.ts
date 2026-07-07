@@ -25,4 +25,7 @@ router.get('/:reservationId/facture', controller.getFacture.bind(controller));
 // ✅ Alerte impayés (gérante uniquement)
 router.post('/alerter-impayes', isGerante, controller.alerterImpayes.bind(controller));
 
+// ✅ AJOUT : relance individuelle (juste après la route reservation/:reservationId)
+router.post('/relance/:reservationId', controller.envoyerRelance.bind(controller));
+
 export default router;
