@@ -1,26 +1,311 @@
 // frontend/src/pages/PaiementsPage.tsx
-import React, { useEffect, useState, useCallback, useRef } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import toast from 'react-hot-toast';
 import {
-  CreditCard, Plus, Search, Euro, Send,
-  Eye, Download, Calendar, Clock, CheckCircle,
-  RefreshCw, FileText,
-  ChevronDown, ChevronUp, Receipt,
-  SlidersHorizontal, TrendingUp, TrendingDown,
-  BadgeDollarSign, History, Coins, PiggyBank, Gift,
-  Users, ChevronLeft, ChevronRight, Loader2,
-  Mail, X, AlertCircle, Printer, Phone, MapPin,
-  Wallet, Banknote, Landmark, ReceiptText,
-  AlertTriangle, Hourglass, Timer, Sparkles,
-  Shield, Award, Zap, Building2, Fingerprint,
-  Lock, Key, Check, CircleCheck, PartyPopper
+  CreditCard,
+  Plus,
+  Search,
+  Euro,
+  Send,
+  Eye,
+  Download,
+  Calendar,
+  Clock,
+  CheckCircle,
+  RefreshCw,
+  FileText,
+  ChevronDown,
+  ChevronUp,
+  Receipt,
+  SlidersHorizontal,
+  TrendingUp,
+  TrendingDown,
+  BadgeDollarSign,
+  History,
+  Coins,
+  PiggyBank,
+  Gift,
+  Users,
+  ChevronLeft,
+  ChevronRight,
+  Loader2,
+  Mail,
+  X,
+  AlertCircle,
+  Printer,
+  Phone,
+  MapPin,
+  Banknote,
+  Landmark,
+  ReceiptText,
+  AlertTriangle,
+  Hourglass,
+  Timer,
+  Sparkles,
+  Shield,
+  Award,
+  Zap,
+  Lock,
+  Check,
+  CircleCheck,
+  Palmtree,
+  Building,
+  User,
+  Calendar as CalendarIcon,
+  DollarSign,
+  Home,
+  PieChart,
+  BarChart3,
+  Activity,
+  Wallet,
+  CreditCard as CardIcon,
+  ArrowRight,
+  ArrowLeft,
+  Filter,
+  Grid,
+  List,
+  Settings,
+  HelpCircle,
+  Bell,
+  BellOff,
+  Moon,
+  Sun,
+  Monitor,
+  LayoutDashboard,
+  FileInvoice,
+  FileSpreadsheet,
+  Printer as PrinterIcon,
+  Copy,
+  Share2,
+  Star,
+  Heart,
+  ThumbsUp,
+  ThumbsDown,
+  MessageCircle,
+  PhoneCall,
+  Video,
+  Camera,
+  Image,
+  Music,
+  Headphones,
+  Tv,
+  Wifi,
+  Coffee,
+  Wind,
+  Snowflake,
+  Umbrella,
+  Sun as SunIcon,
+  Cloud,
+  CloudRain,
+  CloudSnow,
+  CloudLightning,
+  Droplets,
+  Thermometer,
+  Compass,
+  Navigation,
+  Map,
+  Globe,
+  Flag,
+  Award as AwardIcon,
+  Medal,
+  Trophy,
+  Crown,
+  Diamond,
+  Gem,
+  Sparkle,
+  Fire,
+  Flame,
+  Zap as ZapIcon,
+  Rocket,
+  Plane,
+  Car,
+  Bus,
+  Train,
+  Bike,
+  Footprints,
+  Mountain,
+  TreePine,
+  Flower,
+  Leaf,
+  PalmTree,
+  Sprout,
+  Apple,
+  Coffee as CoffeeIcon,
+  Utensils,
+  Pizza,
+  Cake,
+  IceCream,
+  Beer,
+  Wine,
+  GlassWater,
+  Droplet,
+  Waves,
+  Sailboat,
+  Ship,
+  Anchor,
+  Fish,
+  Bird,
+  Dog,
+  Cat,
+  Rabbit,
+  Turtle,
+  Bug,
+  Butterfly,
+  Bee,
+  Ant,
+  Spider,
+  Scorpion,
+  Dragonfly,
+  Snail,
+  Worm,
+  Microscope,
+  Flask,
+  TestTube,
+  Beaker,
+  Atom,
+  Dna,
+  Brain,
+  HeartPulse,
+  Stethoscope,
+  Pill,
+  Syringe,
+  Bandage,
+  Hospital,
+  Ambulance,
+  Truck,
+  Package,
+  Box,
+  Archive,
+  Folder,
+  FolderOpen,
+  FolderPlus,
+  FolderSearch,
+  FolderMinus,
+  FolderX,
+  File,
+  FilePlus,
+  FileMinus,
+  FileSearch,
+  FileX,
+  FileCheck,
+  FileWarning,
+  FileCog,
+  FileQuestion,
+  FileUser,
+  FileCode,
+  FileImage,
+  FileAudio,
+  FileVideo,
+  FileSpreadsheet as FileSpreadsheetIcon,
+  FileText as FileTextIcon,
+  FileCheck as FileCheckIcon,
+  FileX as FileXIcon,
+  FileWarning as FileWarningIcon,
+  FileCog as FileCogIcon,
+  FileQuestion as FileQuestionIcon,
+  FileUser as FileUserIcon,
+  FileCode as FileCodeIcon,
+  FileImage as FileImageIcon,
+  FileAudio as FileAudioIcon,
+  FileVideo as FileVideoIcon,
+  Folder as FolderIcon,
+  FolderOpen as FolderOpenIcon,
+  FolderPlus as FolderPlusIcon,
+  FolderSearch as FolderSearchIcon,
+  FolderMinus as FolderMinusIcon,
+  FolderX as FolderXIcon,
+  Archive as ArchiveIcon,
+  Package as PackageIcon,
+  Box as BoxIcon,
+  Truck as TruckIcon,
+  Ship as ShipIcon,
+  Plane as PlaneIcon,
+  Car as CarIcon,
+  Bus as BusIcon,
+  Train as TrainIcon,
+  Bike as BikeIcon,
+  Footprints as FootprintsIcon,
+  Mountain as MountainIcon,
+  TreePine as TreePineIcon,
+  Flower as FlowerIcon,
+  Leaf as LeafIcon,
+  PalmTree as PalmTreeIcon,
+  Sprout as SproutIcon,
+  Apple as AppleIcon,
+  Coffee as CoffeeIcon2,
+  Utensils as UtensilsIcon,
+  Pizza as PizzaIcon,
+  Cake as CakeIcon,
+  IceCream as IceCreamIcon,
+  Beer as BeerIcon,
+  Wine as WineIcon,
+  GlassWater as GlassWaterIcon,
+  Droplet as DropletIcon,
+  Waves as WavesIcon,
+  Sailboat as SailboatIcon,
+  Ship as ShipIcon2,
+  Anchor as AnchorIcon,
+  Fish as FishIcon,
+  Bird as BirdIcon,
+  Dog as DogIcon,
+  Cat as CatIcon,
+  Rabbit as RabbitIcon,
+  Turtle as TurtleIcon,
+  Bug as BugIcon,
+  Butterfly as ButterflyIcon,
+  Bee as BeeIcon,
+  Ant as AntIcon,
+  Spider as SpiderIcon,
+  Scorpion as ScorpionIcon,
+  Dragonfly as DragonflyIcon,
+  Snail as SnailIcon,
+  Worm as WormIcon,
+  Microscope as MicroscopeIcon,
+  Flask as FlaskIcon,
+  TestTube as TestTubeIcon,
+  Beaker as BeakerIcon,
+  Atom as AtomIcon,
+  Dna as DnaIcon,
+  Brain as BrainIcon,
+  HeartPulse as HeartPulseIcon,
+  Stethoscope as StethoscopeIcon,
+  Pill as PillIcon,
+  Syringe as SyringeIcon,
+  Bandage as BandageIcon,
+  Hospital as HospitalIcon,
+  Ambulance as AmbulanceIcon,
+  Truck as TruckIcon2,
+  Package as PackageIcon2,
+  Box as BoxIcon2,
+  Archive as ArchiveIcon2,
+  Folder as FolderIcon2,
+  FolderOpen as FolderOpenIcon2,
+  FolderPlus as FolderPlusIcon2,
+  FolderSearch as FolderSearchIcon2,
+  FolderMinus as FolderMinusIcon2,
+  FolderX as FolderXIcon2,
+  File as FileIcon,
+  FilePlus as FilePlusIcon,
+  FileMinus as FileMinusIcon,
+  FileSearch as FileSearchIcon,
+  FileX as FileXIcon2,
+  FileCheck as FileCheckIcon2,
+  FileWarning as FileWarningIcon2,
+  FileCog as FileCogIcon2,
+  FileQuestion as FileQuestionIcon2,
+  FileUser as FileUserIcon2,
+  FileCode as FileCodeIcon2,
+  FileImage as FileImageIcon2,
+  FileAudio as FileAudioIcon2,
+  FileVideo as FileVideoIcon2
 } from 'lucide-react';
 import { paiementService, reservationService } from '../services/api';
 import { formatEuro, formatDate, formatDateTime } from '../utils/helpers';
 import { useWebSocketContext } from '../context/WebSocketContext';
+import { notifyAjout } from '../components/ui/AjoutNotification';
 
 // ============================================
-// TYPES — Diagramme de classes §3.4
+// TYPES
 // ============================================
 
 type StatutPaiement = 'COMPLET' | 'PARTIEL' | 'EN_ATTENTE' | 'IMPREVU';
@@ -75,6 +360,14 @@ interface Reservation {
   paiements: Paiement[];
   dateCreation: string;
   alertes?: AlertePaiement[];
+  client_prenom?: string;
+  client_nom?: string;
+  client_email?: string;
+  client_telephone?: string;
+  chambre_nom?: string;
+  chambre_numero?: string;
+  petitDejeunerInclus?: boolean;
+  services?: any[];
 }
 
 interface StatsData {
@@ -88,6 +381,383 @@ interface StatsData {
   montantRestant: number;
   tauxRecouvrement: number;
 }
+
+// ============================================
+// COMPOSANT — FACTURE MODAL (SANS EMOJI)
+// ============================================
+
+const FactureModal = ({
+  isOpen,
+  onClose,
+  reservation
+}: {
+  isOpen: boolean;
+  onClose: () => void;
+  reservation: Reservation | null;
+}) => {
+  const [isExporting, setIsExporting] = useState(false);
+
+  if (!isOpen || !reservation) return null;
+
+  const formatDateFacture = (date: string) => new Date(date).toLocaleDateString('fr-FR', {
+    day: '2-digit', month: 'long', year: 'numeric'
+  });
+
+  const totalServices = (reservation.services || []).reduce((sum, s) => sum + (s.montant || 0), 0);
+  const totalTTC = (reservation.montantTotal || 0) + totalServices;
+
+  const toNumber = (value: any): number => {
+    if (typeof value === 'number') return value;
+    if (typeof value === 'string') return parseFloat(value) || 0;
+    return 0;
+  };
+
+  const safeFormat = (value: any, decimals: number = 0): string => {
+    const num = toNumber(value);
+    return num.toFixed(decimals);
+  };
+
+  const handleExportPDF = async () => {
+    setIsExporting(true);
+    try {
+      const printWindow = window.open('', '_blank', 'width=800,height=600');
+      if (!printWindow) {
+        notifyAjout('error', 'Erreur', 'Veuillez autoriser les pop-ups pour exporter le PDF');
+        setIsExporting(false);
+        return;
+      }
+
+      const styles = `
+        <style>
+          @page { size: A4; margin: 20mm; }
+          body { font-family: 'Inter', 'Segoe UI', system-ui, sans-serif; color: #1a1a1a; background: white; padding: 20px; }
+          .facture-container { max-width: 800px; margin: 0 auto; }
+          .facture-header {
+            background: linear-gradient(135deg, #065f46, #0d9488);
+            color: white;
+            padding: 24px 32px;
+            border-radius: 12px 12px 0 0;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+          }
+          .facture-header .logo { display: flex; align-items: center; gap: 14px; }
+          .facture-header .logo .icon { font-size: 28px; }
+          .facture-header .logo h1 { font-size: 22px; margin: 0; font-weight: 700; }
+          .facture-header .logo p { font-size: 12px; opacity: 0.8; margin: 0; }
+          .facture-body { padding: 32px; border: 1px solid #e5e7eb; border-top: none; border-radius: 0 0 12px 12px; }
+          .facture-identity { display: flex; justify-content: space-between; border-bottom: 2px solid #e5e7eb; padding-bottom: 16px; margin-bottom: 20px; }
+          .facture-identity .gite h2 { color: #065f46; margin: 0; font-weight: 700; }
+          .facture-identity .gite p { margin: 4px 0; font-size: 13px; color: #4b5563; }
+          .facture-client { background: #f9fafb; padding: 16px; border-radius: 8px; margin-bottom: 20px; border: 1px solid #e5e7eb; }
+          .facture-client h4 { font-size: 11px; text-transform: uppercase; color: #6b7280; margin: 0 0 6px 0; letter-spacing: 0.5px; font-weight: 600; }
+          .facture-client p { margin: 4px 0; font-size: 14px; }
+          .facture-details {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+            background: #ecfdf5;
+            padding: 16px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            border: 1px solid #a7f3d0;
+          }
+          .facture-details div p:first-child { font-size: 10px; text-transform: uppercase; color: #065f46; font-weight: 600; letter-spacing: 0.5px; margin: 0; }
+          .facture-details div p:last-child { font-size: 14px; font-weight: 500; margin: 4px 0 0 0; }
+          .facture-table { width: 100%; border-collapse: collapse; margin-bottom: 20px; border: 1px solid #e5e7eb; border-radius: 8px; overflow: hidden; }
+          .facture-table th { background: #f9fafb; padding: 12px 16px; text-align: left; font-size: 11px; text-transform: uppercase; color: #6b7280; font-weight: 600; border-bottom: 1px solid #e5e7eb; }
+          .facture-table th:last-child, .facture-table td:last-child { text-align: right; }
+          .facture-table td { padding: 12px 16px; border-bottom: 1px solid #f3f4f6; font-size: 13px; }
+          .facture-table tfoot td { border-top: 2px solid #d1d5db; font-weight: 600; }
+          .facture-total {
+            background: #ecfdf5;
+            padding: 16px 20px;
+            border-radius: 8px;
+            display: flex;
+            justify-content: space-between;
+            font-size: 18px;
+            font-weight: 700;
+            border: 2px solid #065f46;
+            margin-top: 12px;
+          }
+          .facture-total .label { color: #065f46; }
+          .facture-total .amount { color: #065f46; }
+          .facture-footer {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-top: 20px;
+            padding-top: 16px;
+            border-top: 1px solid #e5e7eb;
+          }
+          .facture-footer .logo-small { display: flex; align-items: center; gap: 8px; font-size: 13px; color: #6b7280; }
+          .facture-footer .logo-small .icon { font-size: 18px; }
+          .facture-footer .text { font-size: 12px; color: #6b7280; }
+          @media print { .no-print { display: none !important; } body { padding: 0; } .facture-container { max-width: 100%; } }
+        </style>
+      `;
+
+      const htmlContent = `
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <meta charset="UTF-8">
+          <title>Facture ${reservation.numeroReservation}</title>
+          ${styles}
+        </head>
+        <body>
+          <div class="facture-container">
+            <div class="facture-header">
+              <div class="logo">
+                <span class="icon">🌴</span>
+                <div>
+                  <h1>Les Palmiers</h1>
+                  <p>Gîte de charme - L'Entre-Deux</p>
+                </div>
+              </div>
+              <div style="text-align:right;">
+                <p style="margin:0;font-size:14px;font-weight:600;">Facture</p>
+                <p style="margin:2px 0 0 0;font-size:13px;opacity:0.8;">N° ${reservation.numeroReservation}</p>
+              </div>
+            </div>
+            <div class="facture-body">
+              <div class="facture-identity">
+                <div class="gite">
+                  <h2>🌴 Les Palmiers</h2>
+                  <p>12 Rue des Palmiers, 97440 L'Entre-Deux</p>
+                  <p>La Réunion</p>
+                  <p>Tél: 0262 12 34 56</p>
+                </div>
+                <div style="text-align:right;">
+                  <p style="font-size:13px;color:#6b7280;margin:0;">Émise le ${new Date().toLocaleDateString('fr-FR')}</p>
+                </div>
+              </div>
+              <div class="facture-client">
+                <h4>Client</h4>
+                <p><strong>${reservation.client?.prenom || reservation.client_prenom || ''} ${reservation.client?.nom || reservation.client_nom || ''}</strong></p>
+                <p>${reservation.client?.email || reservation.client_email || ''}</p>
+                <p>${reservation.client?.telephone || reservation.client_telephone || ''}</p>
+              </div>
+              <div class="facture-details">
+                <div><p>Arrivée</p><p>${formatDateFacture(reservation.dateArrivee)}</p></div>
+                <div><p>Départ</p><p>${formatDateFacture(reservation.dateDepart)}</p></div>
+                <div><p>Chambre</p><p>${reservation.chambre?.nom || reservation.chambre_nom || ''}</p></div>
+                <div><p>Personnes</p><p>${reservation.nbAdultes} adultes${reservation.nbEnfants > 0 ? ` + ${reservation.nbEnfants} enfants` : ''}</p></div>
+              </div>
+              <table class="facture-table">
+                <thead>
+                  <tr><th>Description</th><th style="text-align:center;">Qté</th><th style="text-align:right;">Prix</th><th style="text-align:right;">Total</th></tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td>Hébergement - ${reservation.nbNuits} nuits</td>
+                    <td style="text-align:center;">${reservation.nbNuits}</td>
+                    <td style="text-align:right;">${safeFormat((reservation.montantTotal) / Math.max(1, reservation.nbNuits), 0)}€</td>
+                    <td style="text-align:right;font-weight:600;">${safeFormat(reservation.montantTotal, 2)}€</td>
+                  </tr>
+                  ${reservation.petitDejeunerInclus ? `
+                  <tr><td>Petit-déjeuner inclus</td><td style="text-align:center;">-</td><td style="text-align:right;">-</td><td style="text-align:right;color:#065f46;font-weight:600;">Inclus</td></tr>
+                  ` : ''}
+                  ${(reservation.services || []).map((s: any) => `
+                  <tr>
+                    <td>${s.libelle || s.type || 'Service'}</td>
+                    <td style="text-align:center;">${s.quantite || 1}</td>
+                    <td style="text-align:right;">${safeFormat((s.montant || 0) / Math.max(1, s.quantite || 1), 0)}€</td>
+                    <td style="text-align:right;font-weight:600;">${safeFormat(s.montant, 2)}€</td>
+                  </tr>
+                  `).join('')}
+                </tbody>
+                <tfoot>
+                  <tr><td colspan="3" style="text-align:right;font-weight:600;">Total TTC</td><td style="text-align:right;font-weight:700;font-size:16px;color:#065f46;">${safeFormat(totalTTC, 2)}€</td></tr>
+                  ${reservation.montantAcompte > 0 ? `
+                  <tr><td colspan="3" style="text-align:right;font-size:13px;color:#4b5563;">Acompte versé</td><td style="text-align:right;font-size:13px;color:#065f46;font-weight:600;">-${safeFormat(reservation.montantAcompte, 2)}€</td></tr>
+                  ` : ''}
+                  ${reservation.montantRestantDu > 0 ? `
+                  <tr><td colspan="3" style="text-align:right;font-size:13px;font-weight:600;color:#dc2626;">Restant dû</td><td style="text-align:right;font-size:13px;font-weight:700;color:#dc2626;">${safeFormat(reservation.montantRestantDu, 2)}€</td></tr>
+                  ` : ''}
+                </tfoot>
+              </table>
+              <div class="facture-total"><span class="label">Total à payer</span><span class="amount">${safeFormat(totalTTC, 2)}€</span></div>
+              <div class="facture-footer">
+                <div class="logo-small"><span class="icon">🌴</span><span>Les Palmiers - Gîte de charme</span></div>
+                <div class="text"><p style="margin:0;">Facture générée automatiquement</p><p style="margin:2px 0 0 0;">Merci de votre confiance</p></div>
+              </div>
+            </div>
+          </div>
+          <script>
+            window.onload = function() { setTimeout(function() { window.print(); }, 500); };
+          <\/script>
+        </body>
+        </html>
+      `;
+
+      printWindow.document.write(htmlContent);
+      printWindow.document.close();
+      printWindow.onafterprint = function() { printWindow.close(); };
+      notifyAjout('success', 'PDF généré', 'Le PDF a été généré avec succès');
+    } catch (error) {
+      console.error('Erreur export PDF:', error);
+      notifyAjout('error', 'Erreur', 'Erreur lors de la génération du PDF');
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-fadeIn">
+      <div className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+        <div className="sticky top-0 bg-gradient-to-r from-emerald-700 to-emerald-800 text-white px-6 py-4 flex justify-between items-center rounded-t-2xl">
+          <div className="flex items-center gap-4">
+            <div className="p-2 bg-white/10 rounded-xl backdrop-blur-sm">
+              <FileText size={28} className="text-white" />
+            </div>
+            <div>
+              <h3 className="text-xl font-bold">Facture</h3>
+              <p className="text-emerald-200 text-sm">N° {reservation.numeroReservation}</p>
+            </div>
+          </div>
+          <button onClick={onClose} className="p-2 hover:bg-white/10 rounded-xl transition-colors text-white/80 hover:text-white">
+            <X size={20} />
+          </button>
+        </div>
+        <div id="facture-content" className="p-6 space-y-6">
+          <div className="flex justify-between items-start border-b border-gray-200 pb-4">
+            <div>
+              <div className="flex items-center gap-2">
+                <Palmtree size={20} className="text-emerald-700" />
+                <h2 className="text-xl font-bold text-emerald-800">Les Palmiers</h2>
+              </div>
+              <p className="text-sm text-gray-600">Gîte de charme - L'Entre-Deux</p>
+              <p className="text-xs text-gray-500">12 Rue des Palmiers, 97440 L'Entre-Deux</p>
+              <p className="text-xs text-gray-500">Tél: 0262 12 34 56</p>
+            </div>
+            <div className="text-right">
+              <p className="text-sm font-medium text-gray-900">Facture</p>
+              <p className="text-xs text-gray-500">Émise le {new Date().toLocaleDateString('fr-FR')}</p>
+            </div>
+          </div>
+
+          <div className="bg-gray-50 rounded-xl p-4 border border-gray-200">
+            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1 flex items-center gap-1.5">
+              <User size={12} className="text-gray-400" />
+              Client
+            </p>
+            <p className="font-medium text-gray-900">{reservation.client?.prenom || reservation.client_prenom || ''} {reservation.client?.nom || reservation.client_nom || ''}</p>
+            <p className="text-sm text-gray-600">{reservation.client?.email || reservation.client_email || ''}</p>
+            <p className="text-sm text-gray-600">{reservation.client?.telephone || reservation.client_telephone || ''}</p>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4 bg-emerald-50 rounded-xl p-4 border border-emerald-200">
+            <div>
+              <p className="text-xs font-semibold text-emerald-700 uppercase tracking-wider flex items-center gap-1.5">
+                <CalendarIcon size={12} className="text-emerald-500" />
+                Arrivée
+              </p>
+              <p className="font-medium text-gray-900">{formatDateFacture(reservation.dateArrivee)}</p>
+            </div>
+            <div>
+              <p className="text-xs font-semibold text-emerald-700 uppercase tracking-wider flex items-center gap-1.5">
+                <CalendarIcon size={12} className="text-emerald-500" />
+                Départ
+              </p>
+              <p className="font-medium text-gray-900">{formatDateFacture(reservation.dateDepart)}</p>
+            </div>
+            <div>
+              <p className="text-xs font-semibold text-emerald-700 uppercase tracking-wider flex items-center gap-1.5">
+                <Building size={12} className="text-emerald-500" />
+                Chambre
+              </p>
+              <p className="font-medium text-gray-900">{reservation.chambre?.nom || reservation.chambre_nom || ''}</p>
+            </div>
+            <div>
+              <p className="text-xs font-semibold text-emerald-700 uppercase tracking-wider flex items-center gap-1.5">
+                <Users size={12} className="text-emerald-500" />
+                Personnes
+              </p>
+              <p className="font-medium text-gray-900">{reservation.nbAdultes} adultes{reservation.nbEnfants > 0 ? ` + ${reservation.nbEnfants} enfants` : ''}</p>
+            </div>
+          </div>
+
+          <div className="border border-gray-200 rounded-xl overflow-hidden">
+            <table className="w-full text-sm">
+              <thead className="bg-gray-50 border-b border-gray-200">
+                <tr>
+                  <th className="px-4 py-2 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Description</th>
+                  <th className="px-4 py-2 text-right text-xs font-semibold text-gray-600 uppercase tracking-wider">Qté</th>
+                  <th className="px-4 py-2 text-right text-xs font-semibold text-gray-600 uppercase tracking-wider">Prix</th>
+                  <th className="px-4 py-2 text-right text-xs font-semibold text-gray-600 uppercase tracking-wider">Total</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                <tr>
+                  <td className="px-4 py-2 text-gray-800">Hébergement - {reservation.nbNuits} nuits</td>
+                  <td className="px-4 py-2 text-right text-gray-600">{reservation.nbNuits}</td>
+                  <td className="px-4 py-2 text-right text-gray-600">{safeFormat((reservation.montantTotal) / Math.max(1, reservation.nbNuits), 0)}€</td>
+                  <td className="px-4 py-2 text-right font-medium text-gray-900">{safeFormat(reservation.montantTotal, 2)}€</td>
+                </tr>
+                {reservation.petitDejeunerInclus && (
+                  <tr>
+                    <td className="px-4 py-2 text-gray-800">Petit-déjeuner inclus</td>
+                    <td className="px-4 py-2 text-right text-gray-600">-</td>
+                    <td className="px-4 py-2 text-right text-gray-600">-</td>
+                    <td className="px-4 py-2 text-right font-medium text-emerald-600">Inclus</td>
+                  </tr>
+                )}
+                {(reservation.services || []).map((s: any) => (
+                  <tr key={s.id}>
+                    <td className="px-4 py-2 text-gray-800">{s.libelle || s.type || 'Service'}</td>
+                    <td className="px-4 py-2 text-right text-gray-600">{s.quantite || 1}</td>
+                    <td className="px-4 py-2 text-right text-gray-600">{safeFormat((s.montant || 0) / Math.max(1, s.quantite || 1), 0)}€</td>
+                    <td className="px-4 py-2 text-right font-medium text-gray-900">{safeFormat(s.montant || 0, 2)}€</td>
+                  </tr>
+                ))}
+              </tbody>
+              <tfoot className="border-t-2 border-gray-300 bg-gray-50">
+                <tr>
+                  <td colspan="3" className="px-4 py-3 text-right font-bold text-gray-900">Total TTC</td>
+                  <td className="px-4 py-3 text-right font-bold text-emerald-700 text-lg">{safeFormat(totalTTC, 2)}€</td>
+                </tr>
+                {reservation.montantAcompte > 0 && (
+                  <tr>
+                    <td colspan="3" className="px-4 py-2 text-right text-sm text-gray-600">Acompte versé</td>
+                    <td className="px-4 py-2 text-right text-sm text-emerald-600 font-medium">-{safeFormat(reservation.montantAcompte, 2)}€</td>
+                  </tr>
+                )}
+                {reservation.montantRestantDu > 0 && (
+                  <tr>
+                    <td colspan="3" className="px-4 py-2 text-right text-sm font-semibold text-rose-600">Restant dû</td>
+                    <td className="px-4 py-2 text-right text-sm font-bold text-rose-600">{safeFormat(reservation.montantRestantDu, 2)}€</td>
+                  </tr>
+                )}
+              </tfoot>
+            </table>
+          </div>
+
+          <div className="flex justify-between items-center pt-4 border-t border-gray-200">
+            <div className="flex items-center gap-3">
+              <Palmtree size={20} className="text-emerald-600/60" />
+              <div className="text-xs text-gray-500">
+                <p>Facture générée automatiquement</p>
+                <p>Merci de votre confiance</p>
+              </div>
+            </div>
+            <button
+              onClick={handleExportPDF}
+              disabled={isExporting}
+              className="flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white rounded-xl hover:bg-emerald-700 transition-all duration-200 hover:scale-105 shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {isExporting ? (
+                <><Loader2 size={16} className="animate-spin" /> Génération...</>
+              ) : (
+                <><Download size={16} /> Exporter PDF</>
+              )}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
 
 // ============================================
 // COMPOSANT — MODAL
@@ -144,7 +814,7 @@ const ConfirmDialog = ({ isOpen, title, message, onConfirm, onCancel, variant = 
   }, [isOpen]);
   if (!isOpen) return null;
   const btnClass = {
-    default: 'bg-palmier-600 hover:bg-palmier-700',
+    default: 'bg-emerald-600 hover:bg-emerald-700',
     danger: 'bg-rose-600 hover:bg-rose-700',
     warning: 'bg-amber-500 hover:bg-amber-600',
     success: 'bg-emerald-600 hover:bg-emerald-700',
@@ -164,7 +834,7 @@ const ConfirmDialog = ({ isOpen, title, message, onConfirm, onCancel, variant = 
 };
 
 // ============================================
-// COMPOSANT — CONFIRMATION PAIEMENT (STYLE BANQUE)
+// COMPOSANT — CONFIRMATION PAIEMENT
 // ============================================
 
 const PaymentConfirmation = ({
@@ -185,26 +855,22 @@ const PaymentConfirmation = ({
   onPrint?: () => void;
 }) => {
   const [visible, setVisible] = useState(false);
-  const [showConfetti, setShowConfetti] = useState(false);
 
   useEffect(() => {
     if (isOpen) {
       requestAnimationFrame(() => setVisible(true));
-      setTimeout(() => setShowConfetti(true), 300);
-      setTimeout(() => setShowConfetti(false), 2000);
     } else {
       setVisible(false);
-      setShowConfetti(false);
     }
   }, [isOpen]);
 
   if (!isOpen) return null;
 
   const modeLabels: Record<ModePaiement, { label: string; icon: React.ReactNode; color: string }> = {
-    ESPECES: { label: 'Espèces', icon: <Banknote size={24} />, color: 'text-emerald-600' },
-    CARTE: { label: 'Carte bancaire', icon: <CreditCard size={24} />, color: 'text-blue-600' },
-    VIREMENT: { label: 'Virement', icon: <Landmark size={24} />, color: 'text-purple-600' },
-    CHEQUE: { label: 'Chèque', icon: <ReceiptText size={24} />, color: 'text-amber-600' },
+    ESPECES: { label: 'Espèces', icon: <Banknote size={20} />, color: 'text-emerald-600' },
+    CARTE: { label: 'Carte bancaire', icon: <CreditCard size={20} />, color: 'text-blue-600' },
+    VIREMENT: { label: 'Virement', icon: <Landmark size={20} />, color: 'text-purple-600' },
+    CHEQUE: { label: 'Chèque', icon: <ReceiptText size={20} />, color: 'text-amber-600' },
   };
   const mode = modeLabels[modePaiement];
 
@@ -216,17 +882,8 @@ const PaymentConfirmation = ({
     <div className={`fixed inset-0 z-[60] flex items-center justify-center p-4 transition-all duration-500 ${visible ? 'bg-black/60 backdrop-blur-md' : 'bg-black/0 pointer-events-none'}`}>
       <div className={`bg-white rounded-3xl shadow-2xl max-w-md w-full overflow-hidden transition-all duration-500 ${visible ? 'opacity-100 scale-100 translate-y-0' : 'opacity-0 scale-90 translate-y-8'}`}>
         <div className="relative bg-gradient-to-r from-emerald-500 to-emerald-600 px-6 py-8 text-center">
-          {showConfetti && (
-            <div className="absolute inset-0 overflow-hidden">
-              <div className="absolute top-0 left-1/4 text-2xl animate-bounce" style={{ animationDelay: '0ms' }}>🎉</div>
-              <div className="absolute top-0 right-1/4 text-2xl animate-bounce" style={{ animationDelay: '200ms' }}>✨</div>
-              <div className="absolute top-0 left-1/2 text-2xl animate-bounce" style={{ animationDelay: '400ms' }}>⭐</div>
-              <div className="absolute top-1/2 left-0 text-xl animate-bounce" style={{ animationDelay: '100ms' }}>🎊</div>
-              <div className="absolute top-1/2 right-0 text-xl animate-bounce" style={{ animationDelay: '300ms' }}>🎈</div>
-            </div>
-          )}
           <div className="relative z-10">
-            <div className="w-20 h-20 mx-auto bg-white/20 rounded-full flex items-center justify-center mb-4 animate-pulse-slow">
+            <div className="w-20 h-20 mx-auto bg-white/20 rounded-full flex items-center justify-center mb-4">
               <CheckCircle size={40} className="text-white" />
             </div>
             <h2 className="text-2xl font-bold text-white">Paiement validé</h2>
@@ -278,7 +935,7 @@ const PaymentConfirmation = ({
             </button>
             <button
               onClick={onClose}
-              className="flex-1 px-4 py-2.5 text-sm font-medium text-white bg-gradient-to-r from-palmier-600 to-palmier-700 rounded-xl hover:from-palmier-700 hover:to-palmier-800 transition-all duration-200 flex items-center justify-center gap-2"
+              className="flex-1 px-4 py-2.5 text-sm font-medium text-white bg-gradient-to-r from-emerald-600 to-emerald-700 rounded-xl hover:from-emerald-700 hover:to-emerald-800 transition-all duration-200 flex items-center justify-center gap-2"
             >
               <CheckCircle size={16} /> Terminer
             </button>
@@ -295,7 +952,7 @@ const PaymentConfirmation = ({
 
 const Spinner = () => (
   <div className="flex flex-col items-center justify-center py-20 gap-3">
-    <div className="w-10 h-10 border-3 border-palmier-200 border-t-palmier-600 rounded-full animate-spin" />
+    <div className="w-10 h-10 border-3 border-emerald-200 border-t-emerald-600 rounded-full animate-spin" />
     <p className="text-sm text-gray-500 animate-pulse">Chargement des paiements…</p>
   </div>
 );
@@ -348,7 +1005,7 @@ const Pagination = ({ currentPage, totalPages, onPageChange }: {
       {pages.map(p => (
         <button key={p} onClick={() => onPageChange(p)}
           className={`min-w-[38px] h-[38px] text-sm font-medium rounded-xl border transition-all duration-200 ${
-            p === currentPage ? 'bg-palmier-600 text-white border-palmier-600 shadow-lg shadow-palmier-200 scale-105' : 'border-gray-200 hover:bg-gray-50 text-gray-700 hover:scale-105'
+            p === currentPage ? 'bg-emerald-600 text-white border-emerald-600 shadow-lg shadow-emerald-200 scale-105' : 'border-gray-200 hover:bg-gray-50 text-gray-700 hover:scale-105'
           }`}>
           {p}
         </button>
@@ -423,7 +1080,7 @@ const ModePaiementIcon = ({ mode }: { mode: ModePaiement }) => {
 };
 
 // ============================================
-// COMPOSANT — RING DE RECOUVREMENT (✅ NOUVEAU DESIGN)
+// COMPOSANT — RING DE RECOUVREMENT
 // ============================================
 
 const RecouvrementRing = ({ taux }: { taux: number }) => {
@@ -482,7 +1139,7 @@ const StatCard = ({
   numericValue,
   displayValue,
   icon,
-  color = 'palmier',
+  color = 'emerald',
   subtitle,
   trend,
   trendValue,
@@ -493,7 +1150,7 @@ const StatCard = ({
   numericValue: number;
   displayValue?: string;
   icon: React.ReactNode;
-  color?: 'palmier' | 'emerald' | 'amber' | 'rose' | 'sky' | 'purple';
+  color?: 'emerald' | 'amber' | 'rose' | 'sky' | 'purple' | 'slate';
   subtitle?: string;
   trend?: 'up' | 'down';
   trendValue?: string;
@@ -507,16 +1164,15 @@ const StatCard = ({
     return () => clearTimeout(t);
   }, [delay]);
 
-  // ✅ Design "glassmorphism" léger, plus chill
   const palette = {
-    palmier: { card: 'border-palmier-100/60 bg-white/80 backdrop-blur-sm hover:border-palmier-300 hover:bg-white', icon: 'bg-gradient-to-br from-palmier-50 to-palmier-100 text-palmier-600' },
     emerald: { card: 'border-emerald-100/60 bg-white/80 backdrop-blur-sm hover:border-emerald-300 hover:bg-white', icon: 'bg-gradient-to-br from-emerald-50 to-emerald-100 text-emerald-600' },
     amber:   { card: 'border-amber-100/60 bg-white/80 backdrop-blur-sm hover:border-amber-300 hover:bg-white', icon: 'bg-gradient-to-br from-amber-50 to-amber-100 text-amber-600' },
     rose:    { card: 'border-rose-100/60 bg-white/80 backdrop-blur-sm hover:border-rose-300 hover:bg-white', icon: 'bg-gradient-to-br from-rose-50 to-rose-100 text-rose-600' },
     sky:     { card: 'border-sky-100/60 bg-white/80 backdrop-blur-sm hover:border-sky-300 hover:bg-white', icon: 'bg-gradient-to-br from-sky-50 to-sky-100 text-sky-600' },
     purple:  { card: 'border-purple-100/60 bg-white/80 backdrop-blur-sm hover:border-purple-300 hover:bg-white', icon: 'bg-gradient-to-br from-purple-50 to-purple-100 text-purple-600' },
+    slate:   { card: 'border-slate-100/60 bg-white/80 backdrop-blur-sm hover:border-slate-300 hover:bg-white', icon: 'bg-gradient-to-br from-slate-50 to-slate-100 text-slate-600' },
   };
-  const p = palette[color];
+  const p = palette[color] || palette.emerald;
 
   return (
     <div
@@ -601,7 +1257,7 @@ const ModePaiementFields = ({
               value={form.numeroCheque || ''}
               onChange={e => onChange('numeroCheque', e.target.value)}
               placeholder="Ex: 12345678"
-              className="w-full border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm text-gray-900 focus:ring-2 focus:ring-palmier-400 outline-none placeholder-gray-400 font-mono"
+              className="w-full border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm text-gray-900 focus:ring-2 focus:ring-emerald-400 outline-none placeholder-gray-400 font-mono"
               required
             />
           </div>
@@ -614,7 +1270,7 @@ const ModePaiementFields = ({
               value={form.banqueEmettrice || ''}
               onChange={e => onChange('banqueEmettrice', e.target.value)}
               placeholder="Ex: Crédit Agricole"
-              className="w-full border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm text-gray-900 focus:ring-2 focus:ring-palmier-400 outline-none placeholder-gray-400"
+              className="w-full border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm text-gray-900 focus:ring-2 focus:ring-emerald-400 outline-none placeholder-gray-400"
               required
             />
           </div>
@@ -631,13 +1287,13 @@ const ModePaiementFields = ({
             <select
               value={form.typeCarte || 'CB'}
               onChange={e => onChange('typeCarte', e.target.value)}
-              className="w-full border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm text-gray-700 focus:ring-2 focus:ring-palmier-400 outline-none bg-white"
+              className="w-full border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm text-gray-700 focus:ring-2 focus:ring-emerald-400 outline-none bg-white"
               required
             >
-              <option value="CB">💳 Carte Bancaire (CB)</option>
-              <option value="VISA">💳 Visa</option>
-              <option value="MASTERCARD">💳 Mastercard</option>
-              <option value="AMEX">💳 American Express</option>
+              <option value="CB">Carte Bancaire (CB)</option>
+              <option value="VISA">Visa</option>
+              <option value="MASTERCARD">Mastercard</option>
+              <option value="AMEX">American Express</option>
             </select>
           </div>
           <div>
@@ -651,7 +1307,7 @@ const ModePaiementFields = ({
                 onChange={e => onChange('numeroCarteMasque', e.target.value)}
                 placeholder="**** **** **** 1234"
                 maxLength={19}
-                className="w-full border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm text-gray-900 focus:ring-2 focus:ring-palmier-400 outline-none placeholder-gray-400 font-mono"
+                className="w-full border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm text-gray-900 focus:ring-2 focus:ring-emerald-400 outline-none placeholder-gray-400 font-mono"
               />
               <span className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400">
                 <Lock size={14} />
@@ -674,7 +1330,7 @@ const ModePaiementFields = ({
               value={form.referenceVirement || ''}
               onChange={e => onChange('referenceVirement', e.target.value)}
               placeholder="Ex: VIR-2024-001"
-              className="w-full border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm text-gray-900 focus:ring-2 focus:ring-palmier-400 outline-none placeholder-gray-400 font-mono"
+              className="w-full border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm text-gray-900 focus:ring-2 focus:ring-emerald-400 outline-none placeholder-gray-400 font-mono"
               required
             />
           </div>
@@ -687,7 +1343,7 @@ const ModePaiementFields = ({
               value={form.banqueEmettrice || ''}
               onChange={e => onChange('banqueEmettrice', e.target.value)}
               placeholder="Ex: BNP Paribas"
-              className="w-full border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm text-gray-900 focus:ring-2 focus:ring-palmier-400 outline-none placeholder-gray-400"
+              className="w-full border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm text-gray-900 focus:ring-2 focus:ring-emerald-400 outline-none placeholder-gray-400"
             />
           </div>
         </div>
@@ -700,7 +1356,7 @@ const ModePaiementFields = ({
             <Banknote size={20} className="text-emerald-500" />
             <div>
               <p className="font-medium">Paiement en espèces</p>
-              <p className="text-emerald-600/80 text-xs">Aucune référence requise — pensez à bien compter la monnaie</p>
+              <p className="text-emerald-600/80 text-xs">Aucune référence requise</p>
             </div>
           </div>
         </div>
@@ -736,23 +1392,12 @@ const PaiementRow = ({
   const hasDebt = solde > 0;
 
   const [isHovered, setIsHovered] = useState(false);
-  const [shake, setShake] = useState(false);
-
-  useEffect(() => {
-    if (hasDebt && visible) {
-      const t = setTimeout(() => {
-        setShake(true);
-        setTimeout(() => setShake(false), 600);
-      }, 400 + index * 50);
-      return () => clearTimeout(t);
-    }
-  }, [visible]);
 
   return (
     <tr
       className={`group relative transition-all duration-500 ease-out ${
         index % 2 === 0 ? 'bg-white' : 'bg-gray-50/40'
-      } hover:bg-gradient-to-r hover:from-palmier-50/50 hover:to-transparent ${
+      } hover:bg-gradient-to-r hover:from-emerald-50/50 hover:to-transparent ${
         visible ? 'opacity-100 translate-x-0' : 'opacity-0 -translate-x-3'
       }`}
       style={{ transitionDelay: visible ? `${index * 40}ms` : '0ms' }}
@@ -760,27 +1405,27 @@ const PaiementRow = ({
       onMouseLeave={() => setIsHovered(false)}
     >
       <td className="relative w-0 p-0">
-        <span className={`absolute left-0 top-0 w-[3px] h-full bg-palmier-500 rounded-r-full transition-transform duration-300 origin-center ${
+        <span className={`absolute left-0 top-0 w-[3px] h-full bg-emerald-500 rounded-r-full transition-transform duration-300 origin-center ${
           isHovered ? 'scale-y-100' : 'scale-y-0'
         }`} />
       </td>
 
       <td className="px-5 py-3.5">
-        <span className="font-mono text-xs font-semibold text-palmier-700 bg-palmier-50 px-3 py-1.5 rounded-lg border border-palmier-100">
+        <span className="font-mono text-xs font-semibold text-emerald-700 bg-emerald-50 px-3 py-1.5 rounded-lg border border-emerald-100">
           {r.numeroReservation}
         </span>
       </td>
 
       <td className="px-5 py-3.5">
         <div className="flex items-center gap-3">
-          <div className="w-9 h-9 rounded-full bg-gradient-to-br from-palmier-400 to-palmier-600 flex items-center justify-center text-white font-semibold text-xs shrink-0 transition-transform duration-300 group-hover:scale-110">
+          <div className="w-9 h-9 rounded-full bg-gradient-to-br from-emerald-400 to-emerald-600 flex items-center justify-center text-white font-semibold text-xs shrink-0 transition-transform duration-300 group-hover:scale-110">
             {r.client.prenom[0]}{r.client.nom[0]}
           </div>
           <div className="min-w-0">
             <p className="font-medium text-gray-900 text-sm truncate">
               {r.client.prenom} {r.client.nom}
               {r.nbEnfants > 0 && (
-                <span className="ml-1.5 text-xs text-gray-400">👶 +{r.nbEnfants}</span>
+                <span className="ml-1.5 text-xs text-gray-400">+{r.nbEnfants} enf.</span>
               )}
             </p>
             <p className="text-xs text-gray-500 flex items-center gap-1 truncate">
@@ -816,7 +1461,7 @@ const PaiementRow = ({
 
       <td className="px-5 py-3.5 text-right">
         {hasDebt ? (
-          <p className={`text-sm font-bold text-rose-600 ${shake ? 'animate-shake' : ''}`}>
+          <p className="text-sm font-bold text-rose-600">
             {formatEuro(solde)}
           </p>
         ) : (
@@ -836,7 +1481,7 @@ const PaiementRow = ({
           {(r.statutPaiement === 'EN_ATTENTE' || r.statutPaiement === 'PARTIEL') && (
             <button
               onClick={() => onOpenPaiement(r)}
-              className={`p-2 rounded-lg transition-all duration-300 text-palmier-600 hover:bg-palmier-50 ${
+              className={`p-2 rounded-lg transition-all duration-300 text-emerald-600 hover:bg-emerald-50 ${
                 isHovered ? 'opacity-100 translate-x-0' : 'opacity-0 translate-x-2'
               }`}
               title="Enregistrer un paiement"
@@ -858,7 +1503,7 @@ const PaiementRow = ({
           )}
           <button
             onClick={() => onViewDetails(r)}
-            className={`p-2 rounded-lg transition-all duration-300 text-gray-500 hover:text-palmier-600 hover:bg-palmier-50 ${
+            className={`p-2 rounded-lg transition-all duration-300 text-gray-500 hover:text-emerald-600 hover:bg-emerald-50 ${
               isHovered ? 'opacity-100 translate-x-0' : 'opacity-0 translate-x-2'
             }`}
             style={{ transitionDelay: '60ms' }}
@@ -868,11 +1513,11 @@ const PaiementRow = ({
           </button>
           <button
             onClick={() => onPrintFacture(r)}
-            className={`p-2 rounded-lg transition-all duration-300 text-gray-500 hover:text-gray-700 hover:bg-gray-100 ${
+            className={`p-2 rounded-lg transition-all duration-300 text-sky-500 hover:text-sky-700 hover:bg-sky-50 ${
               isHovered ? 'opacity-100 translate-x-0' : 'opacity-0 translate-x-2'
             }`}
             style={{ transitionDelay: '90ms' }}
-            title="Générer la facture"
+            title="Voir la facture"
           >
             <FileText size={14} />
           </button>
@@ -887,7 +1532,7 @@ const PaiementRow = ({
 // ============================================
 
 export default function PaiementsPage() {
-  // ─── ÉTATS ──────────────────────────────────────
+  // États
   const [loading, setLoading] = useState(true);
   const [reservations, setReservations] = useState<Reservation[]>([]);
   const [filteredReservations, setFilteredReservations] = useState<Reservation[]>([]);
@@ -900,13 +1545,14 @@ export default function PaiementsPage() {
   const [alertes, setAlertes] = useState<AlertePaiement[]>([]);
   const PER_PAGE = 10;
 
-  // ─── WEBSOCKET ──────────────────────────────────
   const { refreshChambres } = useWebSocketContext();
 
-  // ─── MODALS ─────────────────────────────────────
+  // Modals
   const [showModal, setShowModal] = useState(false);
   const [selectedResa, setSelectedResa] = useState<Reservation | null>(null);
   const [selectedForDetails, setSelectedForDetails] = useState<Reservation | null>(null);
+  const [selectedForFacture, setSelectedForFacture] = useState<Reservation | null>(null);
+  const [showFacture, setShowFacture] = useState(false);
   const [confirmRelance, setConfirmRelance] = useState<number | null>(null);
   const [showConfirmation, setShowConfirmation] = useState(false);
   const [confirmationData, setConfirmationData] = useState<{
@@ -916,7 +1562,7 @@ export default function PaiementsPage() {
     reference?: string;
   } | null>(null);
 
-  // ─── FORMULAIRE PAIEMENT ──────────────────────
+  // Formulaire paiement
   const [paiementForm, setPaiementForm] = useState({
     montant: '',
     modePaiement: 'CARTE' as ModePaiement,
@@ -933,7 +1579,7 @@ export default function PaiementsPage() {
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState('');
 
-  // ─── STATISTIQUES ──────────────────────────────
+  // Statistiques
   const [stats, setStats] = useState<StatsData>({
     total: 0,
     complet: 0,
@@ -946,15 +1592,11 @@ export default function PaiementsPage() {
     tauxRecouvrement: 0,
   });
 
-  // ============================================
-  // CONSTANTES — LABELS
-  // ============================================
-
   const modePaiementLabel: Record<ModePaiement, string> = {
-    ESPECES: '💰 Espèces',
-    CARTE: '💳 Carte bancaire',
-    VIREMENT: '🏦 Virement',
-    CHEQUE: '📝 Chèque',
+    ESPECES: 'Espèces',
+    CARTE: 'Carte bancaire',
+    VIREMENT: 'Virement',
+    CHEQUE: 'Chèque',
   };
 
   const typeVersementLabel: Record<TypeVersement, string> = {
@@ -986,15 +1628,23 @@ export default function PaiementsPage() {
       montantSolde: data.montantSolde || 0,
       montantRestantDu: data.montantRestantDu || 0,
       statutPaiement: data.statutPaiement || 'EN_ATTENTE',
-      client: data.client || { id: 0, prenom: '', nom: '', email: '', telephone: '' },
-      chambre: data.chambre || { id: 0, nom: '', numero: '' },
+      client: data.client || { id: 0, prenom: data.client_prenom || '', nom: data.client_nom || '', email: data.client_email || '', telephone: data.client_telephone || '', adresse: '' },
+      chambre: data.chambre || { id: 0, nom: data.chambre_nom || '', numero: data.chambre_numero || '' },
       paiements: data.paiements || [],
       dateCreation: data.createdAt || data.dateCreation || new Date().toISOString(),
+      client_prenom: data.client_prenom || data.client?.prenom || '',
+      client_nom: data.client_nom || data.client?.nom || '',
+      client_email: data.client_email || data.client?.email || '',
+      client_telephone: data.client_telephone || data.client?.telephone || '',
+      chambre_nom: data.chambre_nom || data.chambre?.nom || '',
+      chambre_numero: data.chambre_numero || data.chambre?.numero || '',
+      petitDejeunerInclus: data.petitDejeunerInclus || false,
+      services: data.services || [],
     };
   };
 
   // ============================================
-  // GÉNÉRATION DES ALERTES — §3.4.2 + RG3
+  // GÉNÉRATION DES ALERTES
   // ============================================
 
   const generateAlertes = useCallback((reservationsList: Reservation[]): AlertePaiement[] => {
@@ -1084,7 +1734,7 @@ export default function PaiementsPage() {
       });
     } catch (error) {
       console.error('Erreur loadData:', error);
-      toast.error('Erreur lors du chargement des données');
+      notifyAjout('error', 'Erreur', 'Erreur lors du chargement des données');
     } finally {
       setLoading(false);
       setTimeout(() => setMounted(true), 80);
@@ -1144,6 +1794,16 @@ export default function PaiementsPage() {
     setShowModal(true);
   };
 
+  const openFacture = (resa: Reservation) => {
+    setSelectedForFacture(resa);
+    setShowFacture(true);
+  };
+
+  const closeFacture = () => {
+    setShowFacture(false);
+    setSelectedForFacture(null);
+  };
+
   const handleSavePaiement = async () => {
     if (!selectedResa) return;
     const montant = Number(paiementForm.montant);
@@ -1188,13 +1848,6 @@ export default function PaiementsPage() {
     setShowConfirmation(true);
   };
 
-  // ============================================
-  // ✅ CORRECTION : envoi de la date choisie
-  //    + suppression de la double confirmation
-  //    de réservation (déjà gérée par le backend
-  //    via updateReservationPaymentStatus)
-  // ============================================
-
   const confirmPaiement = async () => {
     if (!selectedResa || !confirmationData) return;
 
@@ -1207,7 +1860,7 @@ export default function PaiementsPage() {
         montant: confirmationData.montant,
         modePaiement: paiementForm.modePaiement,
         typePaiement: paiementForm.typePaiement,
-        datePaiement: paiementForm.datePaiement, // ✅ CORRECTION : la date choisie était perdue
+        datePaiement: paiementForm.datePaiement,
         reference: paiementForm.reference || undefined,
         notes: paiementForm.notes || undefined,
       };
@@ -1228,21 +1881,15 @@ export default function PaiementsPage() {
       const response = await paiementService.create(payload);
 
       if (response?.success) {
-        toast.success('✅ Paiement enregistré avec succès');
+        notifyAjout('success', 'Paiement enregistré', 'Le paiement a été enregistré avec succès');
 
-        // ✅ CORRECTION : le backend confirme déjà automatiquement la réservation
-        // (updateReservationPaymentStatus) et émet RESERVATION_CONFIRMED + REFRESH_CHAMBRES
-        // via WebSocket. On ne refait plus reservationService.update ici (c'était redondant
-        // et pouvait entrer en conflit avec la mise à jour serveur).
         if (response.data?.reservation?.statut === 'CONFIRMEE') {
-          toast.success('✅ Réservation confirmée - Paiement complet reçu');
+          notifyAjout('success', 'Réservation confirmée', 'Paiement complet reçu');
         }
 
-        // 🔔 Rafraîchir les chambres via WebSocket
         refreshChambres();
         try { localStorage.removeItem('chambres_cache'); } catch (e) { /* ignore */ }
 
-        // ✅ Forcer le refresh des données
         await loadData();
 
         setShowConfirmation(false);
@@ -1269,13 +1916,13 @@ export default function PaiementsPage() {
     try {
       const response = await paiementService.envoyerRelance(resaId);
       if (response?.success) {
-        toast.success('Relance envoyée avec succès');
+        notifyAjout('success', 'Relance envoyée', 'La relance a été envoyée avec succès');
         await loadData();
       } else {
-        toast.error(response?.message || 'Erreur lors de l\'envoi de la relance');
+        notifyAjout('error', 'Erreur', response?.message || 'Erreur lors de l\'envoi de la relance');
       }
     } catch (error: any) {
-      toast.error(error.response?.data?.message || 'Erreur lors de l\'envoi de la relance');
+      notifyAjout('error', 'Erreur', error.response?.data?.message || 'Erreur lors de l\'envoi de la relance');
     } finally {
       setConfirmRelance(null);
     }
@@ -1285,26 +1932,18 @@ export default function PaiementsPage() {
     try {
       const response = await paiementService.generateFacture(resa.id);
       if (response?.success) {
-        toast.success(`Facture générée pour ${resa.client.prenom} ${resa.client.nom}`);
+        notifyAjout('success', 'Facture générée', `Facture générée pour ${resa.client.prenom} ${resa.client.nom}`);
         await loadData();
       } else {
-        toast.error(response?.message || 'Erreur lors de la génération de la facture');
+        notifyAjout('error', 'Erreur', response?.message || 'Erreur lors de la génération de la facture');
       }
     } catch (error: any) {
       if (error.response?.data?.message?.includes('existe déjà')) {
-        toast('Une facture existe déjà pour cette réservation');
+        notifyAjout('info', 'Information', 'Une facture existe déjà pour cette réservation');
       } else {
-        toast.error(error.response?.data?.message || 'Erreur lors de la génération de la facture');
+        notifyAjout('error', 'Erreur', error.response?.data?.message || 'Erreur lors de la génération de la facture');
       }
     }
-  };
-
-  const printFacture = async (resa: Reservation) => {
-    await generateFacture(resa);
-  };
-
-  const exportData = () => {
-    toast.success('Export des données effectué');
   };
 
   const envoyerRelancesGroupes = async () => {
@@ -1312,17 +1951,17 @@ export default function PaiementsPage() {
       r.statutPaiement === 'EN_ATTENTE' || r.statutPaiement === 'PARTIEL'
     );
     if (aRelancer.length === 0) {
-      toast('Aucune réservation à relancer');
+      notifyAjout('info', 'Information', 'Aucune réservation à relancer');
       return;
     }
     try {
       const response = await paiementService.alerterImpayes();
       if (response?.success) {
-        toast.success(`${aRelancer.length} relance(s) envoyée(s)`);
+        notifyAjout('success', 'Relances envoyées', `${aRelancer.length} relance(s) envoyée(s)`);
         await loadData();
       }
     } catch (error: any) {
-      toast.error(error.response?.data?.message || 'Erreur lors de l\'envoi des relances');
+      notifyAjout('error', 'Erreur', error.response?.data?.message || 'Erreur lors de l\'envoi des relances');
     }
   };
 
@@ -1349,10 +1988,10 @@ export default function PaiementsPage() {
   // ============================================
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-50 via-palmier-50/20 to-sky-50/30 p-4 lg:p-6 space-y-5 relative">
+    <div className="min-h-screen bg-gradient-to-br from-gray-50 via-emerald-50/20 to-sky-50/30 p-4 lg:p-6 space-y-5 relative">
 
-      {/* ✅ Halos décoratifs discrets en fond (design "chill") */}
-      <div className="fixed top-0 right-0 w-96 h-96 bg-palmier-200/20 rounded-full blur-3xl -z-10 animate-float-slow pointer-events-none" />
+      {/* Décoration de fond */}
+      <div className="fixed top-0 right-0 w-96 h-96 bg-emerald-200/20 rounded-full blur-3xl -z-10 animate-float-slow pointer-events-none" />
       <div className="fixed bottom-0 left-0 w-72 h-72 bg-sky-200/15 rounded-full blur-3xl -z-10 animate-float-slow pointer-events-none" style={{ animationDelay: '2s' }} />
 
       <style>{`
@@ -1360,45 +1999,36 @@ export default function PaiementsPage() {
           from { opacity: 0; transform: translateX(-12px); }
           to { opacity: 1; transform: translateX(0); }
         }
-        @keyframes shake {
-          0%,100% { transform: translateX(0); }
-          20% { transform: translateX(-4px); }
-          40% { transform: translateX(4px); }
-          60% { transform: translateX(-2px); }
-          80% { transform: translateX(2px); }
-        }
         @keyframes pulseDot {
           0%,100% { opacity: 1; transform: scale(1); }
           50% { opacity: 0.3; transform: scale(0.6); }
-        }
-        @keyframes pulseSlow {
-          0%,100% { transform: scale(1); }
-          50% { transform: scale(1.05); }
         }
         @keyframes floatSlow {
           0%, 100% { transform: translate(0, 0) scale(1); }
           50% { transform: translate(-20px, 20px) scale(1.05); }
         }
+        @keyframes fadeIn {
+          from { opacity: 0; transform: translateY(10px); }
+          to { opacity: 1; transform: translateY(0); }
+        }
         .animate-slide-in { animation: slideIn 0.4s ease-out forwards; }
-        .animate-shake { animation: shake 0.55s ease-in-out; }
         .animate-pulse-dot { animation: pulseDot 1.8s ease-in-out infinite; }
-        .animate-pulse-slow { animation: pulseSlow 2s ease-in-out infinite; }
         .animate-float-slow { animation: floatSlow 12s ease-in-out infinite; }
+        .animate-fadeIn { animation: fadeIn 0.3s ease-out forwards; }
         @media print {
           .no-print { display: none !important; }
-          .print-only { display: block !important; }
         }
       `}</style>
 
-      {/* ── EN-TÊTE ─────────────────────────────── */}
+      {/* En-tête */}
       <div
         className={`flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 transition-all duration-500 ${
           mounted ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'
         }`}
       >
         <div className="flex items-center gap-3">
-          <div className="p-2.5 bg-gradient-to-br from-palmier-100 to-palmier-200 rounded-xl transition-transform duration-300 hover:scale-110 hover:rotate-3">
-            <BadgeDollarSign size={22} className="text-palmier-600" />
+          <div className="p-2.5 bg-gradient-to-br from-emerald-100 to-emerald-200 rounded-xl transition-transform duration-300 hover:scale-110 hover:rotate-3">
+            <BadgeDollarSign size={22} className="text-emerald-600" />
           </div>
           <div>
             <h1 className="text-xl font-bold text-gray-900 flex items-center gap-2">
@@ -1425,13 +2055,13 @@ export default function PaiementsPage() {
 
         <div className="flex items-center gap-2 no-print">
           {alertes.filter(a => !a.lue).length > 0 && (
-            <div className="flex items-center gap-1.5 px-3 py-1.5 bg-rose-50 border border-rose-200 rounded-xl text-rose-700 text-sm animate-pulse">
+            <div className="flex items-center gap-1.5 px-3 py-1.5 bg-rose-50 border border-rose-200 rounded-xl text-rose-700 text-sm">
               <AlertCircle size={14} className="text-rose-500" />
               <span className="font-medium">{alertes.filter(a => !a.lue).length} alerte{alertes.filter(a => !a.lue).length > 1 ? 's' : ''}</span>
             </div>
           )}
           <button
-            onClick={exportData}
+            onClick={() => notifyAjout('success', 'Export', 'Export des données effectué')}
             className="flex items-center gap-1.5 px-3.5 py-2 text-sm font-medium text-gray-700 border border-gray-200 bg-white rounded-xl hover:bg-gray-50 hover:scale-105 active:scale-95 transition-all duration-200"
           >
             <Download size={15} className="text-gray-500" /> Exporter
@@ -1446,16 +2076,16 @@ export default function PaiementsPage() {
         </div>
       </div>
 
-      {/* ── ALERTES ──────────────────────────────── */}
+      {/* Alertes */}
       <AlerteBanner alertes={alertes} />
 
-      {/* ── STAT CARDS ───────────────────────────── */}
+      {/* Statistiques */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <StatCard
           label="Réservations"
           numericValue={stats.total}
           icon={<Users size={18} />}
-          color="palmier"
+          color="emerald"
           subtitle={`${stats.complet} soldées · ${stats.enAttente} en attente`}
           delay={0}
           animate={mounted}
@@ -1493,7 +2123,7 @@ export default function PaiementsPage() {
         />
       </div>
 
-      {/* ── FILTRES ─────────────────────────────── */}
+      {/* Filtres */}
       <div
         className={`bg-white/90 backdrop-blur-sm rounded-xl border border-gray-200 overflow-hidden transition-all duration-500 ${
           mounted ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'
@@ -1523,29 +2153,29 @@ export default function PaiementsPage() {
                 placeholder="Rechercher par nom, chambre, numéro..."
                 value={search}
                 onChange={e => setSearch(e.target.value)}
-                className="w-full pl-10 pr-4 py-2.5 border border-gray-200 rounded-xl text-sm text-gray-900 focus:ring-2 focus:ring-palmier-400 focus:border-palmier-400 outline-none placeholder-gray-400 bg-gray-50 hover:bg-white transition-colors"
+                className="w-full pl-10 pr-4 py-2.5 border border-gray-200 rounded-xl text-sm text-gray-900 focus:ring-2 focus:ring-emerald-400 focus:border-emerald-400 outline-none placeholder-gray-400 bg-gray-50 hover:bg-white transition-colors"
               />
             </div>
 
             <select
               value={statutFilter}
               onChange={e => setStatutFilter(e.target.value as StatutPaiement | '')}
-              className="border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm text-gray-700 bg-gray-50 hover:bg-white focus:ring-2 focus:ring-palmier-400 outline-none transition-colors"
+              className="border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm text-gray-700 bg-gray-50 hover:bg-white focus:ring-2 focus:ring-emerald-400 outline-none transition-colors"
             >
               <option value="">Tous les statuts</option>
-              <option value="EN_ATTENTE">⏳ En attente</option>
-              <option value="PARTIEL">🔄 Partiel</option>
-              <option value="COMPLET">✅ Complet</option>
-              <option value="IMPREVU">⚠️ Imprévu</option>
+              <option value="EN_ATTENTE">En attente</option>
+              <option value="PARTIEL">Partiel</option>
+              <option value="COMPLET">Complet</option>
+              <option value="IMPREVU">Imprévu</option>
             </select>
 
             <div className="flex items-center gap-1.5 ml-auto flex-wrap">
               {((['', 'EN_ATTENTE', 'PARTIEL', 'COMPLET'] as const)).map(s => {
                 const labels: Record<string, string> = {
                   '': 'Tous',
-                  EN_ATTENTE: '⏳ En attente',
-                  PARTIEL: '🔄 Partiel',
-                  COMPLET: '✅ Complet'
+                  EN_ATTENTE: 'En attente',
+                  PARTIEL: 'Partiel',
+                  COMPLET: 'Complet'
                 };
                 const active = statutFilter === s;
                 return (
@@ -1553,7 +2183,7 @@ export default function PaiementsPage() {
                     key={s}
                     onClick={() => setStatutFilter(s)}
                     className={`px-3 py-1.5 text-xs font-medium rounded-lg border transition-all duration-200 hover:scale-105 active:scale-95 ${
-                      active ? 'bg-palmier-600 text-white border-palmier-600 shadow-md' : 'border-gray-200 text-gray-600 hover:bg-gray-50'
+                      active ? 'bg-emerald-600 text-white border-emerald-600 shadow-md' : 'border-gray-200 text-gray-600 hover:bg-gray-50'
                     }`}
                   >
                     {labels[s]}
@@ -1573,7 +2203,7 @@ export default function PaiementsPage() {
         </div>
       </div>
 
-      {/* ── TABLEAU ──────────────────────────────── */}
+      {/* Tableau */}
       <div
         className={`bg-white/90 backdrop-blur-sm rounded-xl border border-gray-200 overflow-hidden transition-all duration-500 ${
           mounted ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'
@@ -1616,7 +2246,7 @@ export default function PaiementsPage() {
                     onOpenPaiement={openPaiement}
                     onRelance={setConfirmRelance}
                     onViewDetails={setSelectedForDetails}
-                    onPrintFacture={printFacture}
+                    onPrintFacture={openFacture}
                   />
                 ))}
               </tbody>
@@ -1624,7 +2254,6 @@ export default function PaiementsPage() {
           </div>
         )}
 
-        {/* Footer */}
         {filteredReservations.length > 0 && !loading && (
           <div className="border-t border-gray-100 px-5 py-3.5 bg-gray-50/40 flex flex-wrap items-center justify-between gap-3 no-print">
             <div className="flex items-center gap-4 text-xs text-gray-500 flex-wrap">
@@ -1648,8 +2277,8 @@ export default function PaiementsPage() {
               </span>
               <span className="w-px h-4 bg-gray-200" />
               <span className="flex items-center gap-1">
-                <Sparkles size={12} className="text-palmier-400" />
-                Taux de recouvrement <span className="font-semibold text-palmier-600">{stats.tauxRecouvrement}%</span>
+                <Sparkles size={12} className="text-emerald-400" />
+                Taux de recouvrement <span className="font-semibold text-emerald-600">{stats.tauxRecouvrement}%</span>
               </span>
             </div>
             {(stats.enAttente > 0 || stats.partiel > 0) && (
@@ -1674,14 +2303,14 @@ export default function PaiementsPage() {
         />
       )}
 
-      {/* ── MODAL PAIEMENT ──────────────────────── */}
+      {/* Modal Paiement */}
       <Modal
         isOpen={showModal}
         onClose={() => { setShowModal(false); setSelectedResa(null); }}
         title={
           <div className="flex items-center gap-2">
-            <div className="p-1.5 bg-gradient-to-br from-palmier-100 to-palmier-200 rounded-lg">
-              <CreditCard size={16} className="text-palmier-600" />
+            <div className="p-1.5 bg-gradient-to-br from-emerald-100 to-emerald-200 rounded-lg">
+              <CreditCard size={16} className="text-emerald-600" />
             </div>
             <span className="text-gray-900">Enregistrer un paiement</span>
             {selectedResa && (
@@ -1701,7 +2330,7 @@ export default function PaiementsPage() {
             <button
               onClick={handleSavePaiement}
               disabled={saving}
-              className="px-5 py-2.5 text-sm font-medium text-white bg-gradient-to-r from-palmier-600 to-palmier-700 hover:from-palmier-500 hover:to-palmier-600 rounded-xl transition-all duration-300 hover:scale-[1.03] active:scale-95 disabled:opacity-50 disabled:hover:scale-100 flex items-center gap-2 shadow-lg shadow-palmier-200 hover:shadow-xl hover:shadow-palmier-300/60"
+              className="px-5 py-2.5 text-sm font-medium text-white bg-gradient-to-r from-emerald-600 to-emerald-700 hover:from-emerald-500 hover:to-emerald-600 rounded-xl transition-all duration-300 hover:scale-105 active:scale-95 disabled:opacity-50 disabled:hover:scale-100 flex items-center gap-2 shadow-lg shadow-emerald-200"
             >
               {saving ? (
                 <><Loader2 size={15} className="animate-spin" />Enregistrement…</>
@@ -1737,11 +2366,11 @@ export default function PaiementsPage() {
               ))}
             </div>
 
-            <div className="p-3.5 bg-gradient-to-r from-gray-50 to-palmier-50/30 rounded-xl border border-gray-100 grid grid-cols-2 gap-y-1.5 text-xs text-gray-600">
-              <span className="flex items-center gap-1.5">👤 {selectedResa.client.prenom} {selectedResa.client.nom}</span>
-              <span className="flex items-center gap-1.5">🛏️ {selectedResa.chambre.nom}</span>
-              <span className="flex items-center gap-1.5">📅 {formatDate(selectedResa.dateArrivee)} → {formatDate(selectedResa.dateDepart)}</span>
-              <span className="flex items-center gap-1.5">🌙 {selectedResa.nbNuits} nuits · {selectedResa.nbAdultes} adultes{selectedResa.nbEnfants > 0 ? `, ${selectedResa.nbEnfants} enfants` : ''}</span>
+            <div className="p-3.5 bg-gradient-to-r from-gray-50 to-emerald-50/30 rounded-xl border border-gray-100 grid grid-cols-2 gap-y-1.5 text-xs text-gray-600">
+              <span className="flex items-center gap-1.5"><User size={12} className="text-gray-400" /> {selectedResa.client.prenom} {selectedResa.client.nom}</span>
+              <span className="flex items-center gap-1.5"><Building size={12} className="text-gray-400" /> {selectedResa.chambre.nom}</span>
+              <span className="flex items-center gap-1.5"><Calendar size={12} className="text-gray-400" /> {formatDate(selectedResa.dateArrivee)} → {formatDate(selectedResa.dateDepart)}</span>
+              <span className="flex items-center gap-1.5"><Clock size={12} className="text-gray-400" /> {selectedResa.nbNuits} nuits · {selectedResa.nbAdultes} adultes{selectedResa.nbEnfants > 0 ? `, ${selectedResa.nbEnfants} enfants` : ''}</span>
             </div>
 
             <div className="grid grid-cols-2 gap-4">
@@ -1757,7 +2386,7 @@ export default function PaiementsPage() {
                     min="0.01"
                     value={paiementForm.montant}
                     onChange={e => setPaiementForm(f => ({ ...f, montant: e.target.value }))}
-                    className="w-full pl-8 pr-4 py-2.5 border border-gray-200 rounded-xl text-sm text-gray-900 focus:ring-2 focus:ring-palmier-400 focus:border-palmier-400 outline-none transition-shadow placeholder-gray-400"
+                    className="w-full pl-8 pr-4 py-2.5 border border-gray-200 rounded-xl text-sm text-gray-900 focus:ring-2 focus:ring-emerald-400 focus:border-emerald-400 outline-none transition-shadow placeholder-gray-400"
                     placeholder="0.00"
                     autoFocus
                   />
@@ -1783,7 +2412,7 @@ export default function PaiementsPage() {
                       numeroCarteMasque: '',
                     }));
                   }}
-                  className="w-full border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm text-gray-700 focus:ring-2 focus:ring-palmier-400 outline-none bg-white"
+                  className="w-full border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm text-gray-700 focus:ring-2 focus:ring-emerald-400 outline-none bg-white"
                 >
                   {Object.entries(modePaiementLabel).map(([v, l]) => (
                     <option key={v} value={v}>{l}</option>
@@ -1795,7 +2424,7 @@ export default function PaiementsPage() {
                 <select
                   value={paiementForm.typePaiement}
                   onChange={e => setPaiementForm(f => ({ ...f, typePaiement: e.target.value as TypeVersement }))}
-                  className="w-full border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm text-gray-700 focus:ring-2 focus:ring-palmier-400 outline-none bg-white"
+                  className="w-full border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm text-gray-700 focus:ring-2 focus:ring-emerald-400 outline-none bg-white"
                 >
                   {Object.entries(typeVersementLabel).map(([v, l]) => (
                     <option key={v} value={v}>{l}</option>
@@ -1808,7 +2437,7 @@ export default function PaiementsPage() {
                   type="date"
                   value={paiementForm.datePaiement}
                   onChange={e => setPaiementForm(f => ({ ...f, datePaiement: e.target.value }))}
-                  className="w-full border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm text-gray-900 focus:ring-2 focus:ring-palmier-400 outline-none"
+                  className="w-full border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm text-gray-900 focus:ring-2 focus:ring-emerald-400 outline-none"
                 />
               </div>
               <div className="col-span-2">
@@ -1820,7 +2449,7 @@ export default function PaiementsPage() {
                   value={paiementForm.reference}
                   onChange={e => setPaiementForm(f => ({ ...f, reference: e.target.value }))}
                   placeholder="Optionnel"
-                  className="w-full border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm text-gray-900 focus:ring-2 focus:ring-palmier-400 outline-none placeholder-gray-400"
+                  className="w-full border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm text-gray-900 focus:ring-2 focus:ring-emerald-400 outline-none placeholder-gray-400"
                 />
               </div>
 
@@ -1837,7 +2466,7 @@ export default function PaiementsPage() {
                   value={paiementForm.notes}
                   onChange={e => setPaiementForm(f => ({ ...f, notes: e.target.value }))}
                   placeholder="Optionnel"
-                  className="w-full border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm text-gray-900 focus:ring-2 focus:ring-palmier-400 outline-none placeholder-gray-400"
+                  className="w-full border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm text-gray-900 focus:ring-2 focus:ring-emerald-400 outline-none placeholder-gray-400"
                 />
               </div>
             </div>
@@ -1853,7 +2482,7 @@ export default function PaiementsPage() {
         )}
       </Modal>
 
-      {/* ── CONFIRMATION PAIEMENT ──────────────── */}
+      {/* Confirmation paiement */}
       {confirmationData && (
         <PaymentConfirmation
           isOpen={showConfirmation}
@@ -1869,10 +2498,9 @@ export default function PaiementsPage() {
         />
       )}
 
-      {/* ── CONFIRMATION RÉELLE (avant envoi) ─── */}
       <ConfirmDialog
         isOpen={showConfirmation && !saving}
-        title="💳 Confirmer le paiement"
+        title="Confirmer le paiement"
         message={`Voulez-vous confirmer le paiement de ${formatEuro(confirmationData?.montant || 0)} par ${confirmationData?.modePaiement ? modePaiementLabel[confirmationData.modePaiement] : ''} pour ${confirmationData?.client?.prenom} ${confirmationData?.client?.nom} ?`}
         onConfirm={confirmPaiement}
         onCancel={() => {
@@ -1880,17 +2508,17 @@ export default function PaiementsPage() {
           setConfirmationData(null);
         }}
         variant="success"
-        confirmLabel="✅ Confirmer"
+        confirmLabel="Confirmer"
       />
 
-      {/* ── MODAL HISTORIQUE ────────────────────── */}
+      {/* Modal Historique */}
       <Modal
         isOpen={!!selectedForDetails}
         onClose={() => setSelectedForDetails(null)}
         title={
           <div className="flex items-center gap-2">
-            <div className="p-1.5 bg-gradient-to-br from-palmier-100 to-palmier-200 rounded-lg">
-              <History size={16} className="text-palmier-600" />
+            <div className="p-1.5 bg-gradient-to-br from-emerald-100 to-emerald-200 rounded-lg">
+              <History size={16} className="text-emerald-600" />
             </div>
             <span className="text-gray-900">Historique des paiements</span>
             {selectedForDetails && (
@@ -1910,17 +2538,17 @@ export default function PaiementsPage() {
             {selectedForDetails?.statutPaiement !== 'COMPLET' && (
               <button
                 onClick={() => { openPaiement(selectedForDetails!); setSelectedForDetails(null); }}
-                className="px-5 py-2.5 text-sm font-medium text-white bg-palmier-600 hover:bg-palmier-700 rounded-xl transition-all duration-200 hover:scale-105 active:scale-95 flex items-center gap-2"
+                className="px-5 py-2.5 text-sm font-medium text-white bg-emerald-600 hover:bg-emerald-700 rounded-xl transition-all duration-200 hover:scale-105 active:scale-95 flex items-center gap-2"
               >
                 <Plus size={15} /> Nouveau paiement
               </button>
             )}
             {selectedForDetails && (
               <button
-                onClick={() => printFacture(selectedForDetails)}
-                className="px-5 py-2.5 text-sm font-medium text-white bg-gray-700 hover:bg-gray-800 rounded-xl transition-all duration-200 hover:scale-105 active:scale-95 flex items-center gap-2"
+                onClick={() => openFacture(selectedForDetails)}
+                className="px-5 py-2.5 text-sm font-medium text-white bg-sky-600 hover:bg-sky-700 rounded-xl transition-all duration-200 hover:scale-105 active:scale-95 flex items-center gap-2"
               >
-                <Printer size={15} /> Facture
+                <FileText size={15} /> Facture
               </button>
             )}
           </div>
@@ -1942,7 +2570,7 @@ export default function PaiementsPage() {
             </div>
 
             <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-xl border border-gray-100 text-sm">
-              <div className="w-8 h-8 rounded-full bg-palmier-100 flex items-center justify-center text-palmier-600 font-semibold text-xs">
+              <div className="w-8 h-8 rounded-full bg-emerald-100 flex items-center justify-center text-emerald-600 font-semibold text-xs">
                 {selectedForDetails.client.prenom[0]}{selectedForDetails.client.nom[0]}
               </div>
               <div>
@@ -1969,12 +2597,12 @@ export default function PaiementsPage() {
                 {selectedForDetails.paiements.map((p, i) => (
                   <div
                     key={p.id}
-                    className="flex items-center justify-between p-3.5 border border-gray-100 rounded-xl hover:border-palmier-200 hover:shadow-md transition-all duration-300 animate-slide-in"
+                    className="flex items-center justify-between p-3.5 border border-gray-100 rounded-xl hover:border-emerald-200 hover:shadow-md transition-all duration-300 animate-slide-in"
                     style={{ animationDelay: `${i * 60}ms` }}
                   >
                     <div className="flex items-center gap-3">
                       <div className={`p-2 rounded-lg transition-transform duration-200 hover:scale-110 ${
-                        p.typePaiement === 'ACOMPTE' ? 'bg-palmier-50 text-palmier-600' :
+                        p.typePaiement === 'ACOMPTE' ? 'bg-emerald-50 text-emerald-600' :
                         p.typePaiement === 'SOLDE' ? 'bg-emerald-50 text-emerald-600' :
                         'bg-amber-50 text-amber-600'
                       }`}>
@@ -2023,10 +2651,16 @@ export default function PaiementsPage() {
         )}
       </Modal>
 
-      {/* ── CONFIRM RELANCE ─────────────────────── */}
+      {/* Modal Facture */}
+      <FactureModal
+        isOpen={showFacture}
+        onClose={closeFacture}
+        reservation={selectedForFacture}
+      />
+
       <ConfirmDialog
         isOpen={!!confirmRelance}
-        title="📧 Envoyer une relance"
+        title="Envoyer une relance"
         message="Un email de rappel pour paiement en attente sera envoyé au client."
         onConfirm={() => confirmRelance && sendRelance(confirmRelance)}
         onCancel={() => setConfirmRelance(null)}

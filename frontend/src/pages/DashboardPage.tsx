@@ -160,9 +160,9 @@ const normalizeChambre = (c: any): Chambre => ({
   vue: c?.vue ?? 'JARDIN',
   accessiblePMR: c?.accessiblePMR ?? c?.accessible_pmr ?? false,
   statut: c?.statut ?? 'DISPONIBLE',
-  equipements: c?.equipements ?? [],
-  estOccupeeActuellement: c?.estOccupeeActuellement ?? false,
-  reservationsActuelles: c?.reservationsActuelles ?? []
+  equipements: Array.isArray(c?.equipements) ? c.equipements : [],
+  estOccupeeActuellement: c?.estOccupeeActuellement ?? c?.estOccupee ?? false,
+  reservationsActuelles: c?.reservationsActuelles ?? c?.reservations ?? []
 });
 
 const normalizeClient = (c: any): Client => ({
@@ -180,21 +180,21 @@ const normalizeClient = (c: any): Client => ({
   segment: c?.segment ?? 'TOURISTE_INDIVIDUEL',
   origine_geographique: c?.origine_geographique ?? c?.origineGeo ?? '',
   canal_acquisition: c?.canal_acquisition ?? c?.canalAcquisition ?? 'DIRECT',
-  allergies: c?.allergies,
-  regime_alimentaire: c?.regime_alimentaire ?? c?.regimeAlimentaire,
-  chambre_preferee: c?.chambre_preferee ?? c?.chambrePreferee,
-  nb_sejours: c?.nb_sejours ?? c?.nbSejours ?? 0,
-  montant_total_depense: c?.montant_total_depense ?? c?.montantTotalDepense ?? 0,
+  allergies: c?.allergies ?? '',
+  regime_alimentaire: c?.regime_alimentaire ?? c?.regimeAlimentaire ?? '',
+  chambre_preferee: c?.chambre_preferee ?? c?.chambrePreferee ?? '',
+  nb_sejours: c?.nb_sejours ?? c?.nbSejoursRealises ?? 0,
+  montant_total_depense: c?.montant_total_depense ?? c?.montantTotalPaye ?? 0,
   date_creation: c?.date_creation ?? c?.dateCreation ?? new Date().toISOString(),
-  vip: c?.vip ?? false
+  vip: c?.vip ?? c?.estGroupe ?? false
 });
 
 const normalizePaiement = (p: any): Paiement => ({
   id: p?.id ?? p?.idPaiement ?? 0,
   montant: Number(p?.montant ?? 0),
-  mode: p?.mode ?? 'CARTE',
-  typeVersement: p?.typeVersement ?? p?.type ?? 'ACOMPTE',
-  dateHeure: toDate(p?.dateHeure ?? p?.date),
+  mode: p?.modePaiement ?? p?.mode ?? 'CARTE',
+  typeVersement: p?.typePaiement ?? p?.typeVersement ?? p?.type ?? 'ACOMPTE',
+  dateHeure: toDate(p?.datePaiement ?? p?.dateHeure ?? p?.date),
   reference: p?.reference ?? '',
   reservationId: p?.reservationId ?? p?.reservation_id,
   statut: p?.statut ?? 'COMPLET'
@@ -219,15 +219,15 @@ const normalizeReservation = (r: any): Reservation => {
     montantAcompte: Number(r?.montantAcompte ?? r?.montant_acompte ?? 0),
     montantSolde: Number(r?.montantSolde ?? r?.montant_solde ?? 0),
     montantRestantDu: Number(r?.montantRestantDu ?? r?.montant_restant_du ?? 0),
-    demandeSpeciale: r?.demandeSpeciale ?? r?.demandesSpeciales ?? r?.demande_speciale,
-    heureArriveePrevisionnelle: r?.heureArriveePrevisionnelle ?? r?.horaireArriveeTardive,
+    demandeSpeciale: r?.demandeSpeciale ?? r?.demandesSpeciales ?? r?.demande_speciale ?? '',
+    heureArriveePrevisionnelle: r?.heureArriveePrevisionnelle ?? r?.horaireArriveeTardive ?? '',
     litBebe: r?.litBebe ?? r?.lit_bebe ?? false,
     arriveeTardive: r?.arriveeTardive ?? !!(r?.horaireArriveeTardive),
     dateCreation: toDate(r?.dateCreation ?? r?.createdAt ?? r?.date_creation),
-    motifAnnulation: r?.motifAnnulation ?? r?.motif_annulation,
+    motifAnnulation: r?.motifAnnulation ?? r?.motif_annulation ?? '',
     chambre: normalizeChambre(r?.chambre ?? {}),
     client: normalizeClient(r?.client ?? {}),
-    servicesAnnexes: (r?.servicesAnnexes ?? r?.services_annexes ?? []).map((s: any) => ({
+    servicesAnnexes: (r?.servicesAnnexes ?? r?.services_annexes ?? r?.services ?? []).map((s: any) => ({
       id: s?.id ?? 0,
       type: s?.type ?? 'ACTIVITE_GUIDE',
       dateHeureDebut: toDate(s?.dateHeureDebut ?? s?.dateDebut),
@@ -1314,13 +1314,20 @@ export default function DashboardPage() {
     try {
       console.log('📊 [Dashboard] Chargement des données...');
 
-      // 1. Récupérer les clients
-      const clientsRes = await api.get('/clients', { params: { limit: 100 } });
-      const clientsData = clientsRes.data?.data ?? clientsRes.data ?? [];
-      setClients(clientsData.map(normalizeClient));
-      console.log(`📊 [Dashboard] ${clientsData.length} clients chargés`);
+      // === 1. Récupérer les clients ===
+      let clientsData: any[] = [];
+      try {
+        const clientsRes = await api.get('/clients', { params: { limit: 100 } });
+        clientsData = clientsRes.data?.data ?? clientsRes.data ?? [];
+        console.log(`📊 [Dashboard] ${clientsData.length} clients chargés`);
+      } catch (e) {
+        console.warn('[Dashboard] Erreur clients:', e);
+        clientsData = [];
+      }
+      const normalizedClients = clientsData.map(normalizeClient);
+      setClients(normalizedClients);
 
-      // 2. Récupérer les chambres avec occupation
+      // === 2. Récupérer les chambres avec occupation ===
       setLoadingChambres(true);
       let chambresData: any[] = [];
       let statsData: any = {};
@@ -1338,9 +1345,14 @@ export default function DashboardPage() {
       } catch (e) {
         console.warn('[Dashboard] Erreur chambres/avec-occupation, fallback:', e);
         // Fallback sur /chambres simple
-        const fallbackRes = await api.get('/chambres');
-        chambresData = fallbackRes.data?.data ?? fallbackRes.data ?? [];
-        console.log(`📊 [Dashboard] ${chambresData.length} chambres chargées (fallback)`);
+        try {
+          const fallbackRes = await api.get('/chambres');
+          chambresData = fallbackRes.data?.data ?? fallbackRes.data ?? [];
+          console.log(`📊 [Dashboard] ${chambresData.length} chambres chargées (fallback)`);
+        } catch (e2) {
+          console.warn('[Dashboard] Fallback chambres également en échec:', e2);
+          chambresData = [];
+        }
       }
       
       // Normaliser les chambres
@@ -1348,7 +1360,7 @@ export default function DashboardPage() {
       setChambres(normalizedChambres);
       setLoadingChambres(false);
 
-      // 3. Récupérer les réservations
+      // === 3. Récupérer les réservations ===
       let reservationsData: any[] = [];
       try {
         const reservationsRes = await api.get('/reservations', { params: { limit: 100 } });
@@ -1359,7 +1371,7 @@ export default function DashboardPage() {
         reservationsData = [];
       }
 
-      // 4. Récupérer les paiements
+      // === 4. Récupérer les paiements ===
       let paiementsData: any[] = [];
       try {
         const paiementsRes = await api.get('/paiements');
@@ -1371,15 +1383,64 @@ export default function DashboardPage() {
       }
       setPaiements(paiementsData.map(normalizePaiement));
 
-      // 5. Normaliser les réservations avec clients et chambres associés
+      // === 5. Normaliser les réservations avec clients et chambres associés ===
       const normalizedReservations = reservationsData.map((r: any) => {
+        // Trouver le client associé
         const clientId = r?.clientId ?? r?.client_id ?? r?.client?.id;
-        const client = clientsData.find((c: any) => c.id === clientId) || 
-                       normalizeClient(r?.client || {});
+        let client = normalizedClients.find((c: Client) => c.id === clientId);
+        if (!client && r?.client) {
+          client = normalizeClient(r.client);
+        }
+        if (!client) {
+          client = {
+            id: 0,
+            civilite: '',
+            nom: r?.client_nom || '',
+            prenom: r?.client_prenom || '',
+            email: r?.client_email || '',
+            telephone: r?.client_telephone || '',
+            adresse: '',
+            code_postal: '',
+            ville: '',
+            pays: 'France',
+            statut: 'NOUVEAU',
+            segment: '',
+            origine_geographique: '',
+            canal_acquisition: 'DIRECT',
+            allergies: '',
+            regime_alimentaire: '',
+            chambre_preferee: '',
+            nb_sejours: 0,
+            montant_total_depense: 0,
+            date_creation: new Date().toISOString(),
+            vip: false
+          };
+        }
 
+        // Trouver la chambre associée
         const chambreId = r?.chambreId ?? r?.chambre_id ?? r?.chambre?.id;
-        const chambre = normalizedChambres.find((c: Chambre) => c.id === chambreId) || 
-                        normalizeChambre(r?.chambre || {});
+        let chambre = normalizedChambres.find((c: Chambre) => c.id === chambreId);
+        if (!chambre && r?.chambre) {
+          chambre = normalizeChambre(r.chambre);
+        }
+        if (!chambre) {
+          chambre = {
+            id: 0,
+            numero: r?.chambre_numero || '',
+            nom: r?.chambre_nom || 'Chambre',
+            capaciteAdultes: 2,
+            nbLitsSimples: 0,
+            nbLitsDoubles: 0,
+            nbLitsBebe: 0,
+            surfaceM2: 0,
+            vue: 'JARDIN',
+            accessiblePMR: false,
+            statut: 'DISPONIBLE',
+            equipements: [],
+            estOccupeeActuellement: false,
+            reservationsActuelles: []
+          };
+        }
 
         return normalizeReservation({
           ...r,

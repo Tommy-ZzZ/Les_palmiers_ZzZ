@@ -12,7 +12,6 @@ import {
   ReservationHistory,
   User
 } from '../models';
-import { sequelize } from '../config/database';
 import { StatutChambre } from '../models/Room';
 import { StatutReservation, StatutPaiement } from '../models/Reservation';
 import { ModePenalite } from '../models/Cancellation';
@@ -21,10 +20,23 @@ import { AuditService } from '../services/audit.service';
 import { EmailService } from '../services/email.service';
 import { WebSocketManager } from '../websocket/server';
 
-// ✅ RG3 (CDC Annexe 3) : l'acompte demandé au client doit être d'au moins 30%
-// du montant total. La gérante peut choisir un taux plus élevé (ex : 50% pour
-// les groupes) mais jamais en dessous de ce plancher.
-const TAUX_ACOMPTE_MIN = 30;
+export type StatutPaiementFrontend = 'EN_ATTENTE' | 'PARTIEL' | 'COMPLET' | 'IMPREVU';
+
+export function mapStatutPaiementReservation(
+  statut: StatutPaiement | string | null | undefined
+): StatutPaiementFrontend {
+  switch (statut) {
+    case StatutPaiement.SOLDE_COMPLET:
+      return 'COMPLET';
+    case StatutPaiement.ACOMPTE_RECU:
+    case StatutPaiement.SOLDE_PARTIEL:
+      return 'PARTIEL';
+    case StatutPaiement.ACOMPTE_EN_ATTENTE:
+      return 'EN_ATTENTE';
+    default:
+      return 'EN_ATTENTE';
+  }
+}
 
 export class ReservationsController {
   private tarifService = new TarifService();
@@ -94,41 +106,80 @@ export class ReservationsController {
         order: [['dateArrivee', 'ASC']]
       });
 
-      const formattedData = reservations.map(r => ({
-        id: r.id,
-        numero: r.numero,
-        numeroReservation: r.numero,
-        dateArrivee: r.dateArrivee,
-        dateDepart: r.dateDepart,
-        nbAdultes: r.nbAdultes,
-        nbEnfants: r.nbEnfants || 0,
-        nbNuits: r.nbNuits || 1,
-        statut: r.statut,
-        petitDejeunerInclus: r.petitDejeunerInclus || false,
-        montantTotal: r.montantTotal,
-        montantAcompte: r.montantAcompte || 0,
-        montantSolde: r.montantSolde || 0,
-        montantRestantDu: r.montantRestantDu || 0,
-        typeAcompte: r.typeAcompte || 30,
-        demandeSpeciale: r.demandesSpeciales,
-        heureArriveePrevisionnelle: r.horaireArriveeTardive,
-        litBebe: r.litBebe || false,
-        arriveeTardive: !!r.horaireArriveeTardive,
-        dateCreation: r.createdAt,
-        motifAnnulation: r.motifAnnulation,
-        client_prenom: r.client?.prenom || '',
-        client_nom: r.client?.nom || '',
-        client_email: r.client?.email || '',
-        client_telephone: r.client?.telephone || '',
-        chambre_nom: r.chambre?.nom || '',
-        chambre_numero: r.chambre?.numero || '',
-        chambre_id: r.chambreId,
-        client_id: r.clientId,
-        statut_paiement: r.statutPaiement || 'EN_ATTENTE',
-        groupe: r.groupe || false,
-        services: [],
-        paiements: r.paiements || []
-      }));
+      const formattedData = reservations.map(r => {
+        const montantTotal = Math.round((Number(r.montantTotal) || 0) * 100) / 100;
+
+        const paiements = r.paiements || [];
+        const totalPaye = Math.round(
+          paiements.reduce((sum, p) => sum + (Number(p.montant) || 0), 0) * 100
+        ) / 100;
+
+        const montantRestantDu = Math.max(0, Math.round((montantTotal - totalPaye) * 100) / 100);
+
+        return {
+          id: r.id,
+          numero: r.numero,
+          numeroReservation: r.numero,
+          dateArrivee: r.dateArrivee,
+          dateDepart: r.dateDepart,
+          nbAdultes: r.nbAdultes,
+          nbEnfants: r.nbEnfants || 0,
+          nbNuits: r.nbNuits || 1,
+          statut: r.statut,
+          petitDejeunerInclus: r.petitDejeunerInclus || false,
+
+          montantTotal,
+          montantAcompte: totalPaye,
+          montantSolde: Math.round((Number(r.montantSolde) || 0) * 100) / 100,
+          montantRestantDu,
+
+          typeAcompte: r.typeAcompte || 30,
+          demandeSpeciale: r.demandesSpeciales,
+          heureArriveePrevisionnelle: r.horaireArriveeTardive,
+          litBebe: r.litBebe || false,
+          arriveeTardive: !!r.horaireArriveeTardive,
+          dateCreation: r.createdAt,
+          motifAnnulation: r.motifAnnulation,
+
+          client: r.client
+            ? {
+                id: r.client.id,
+                prenom: r.client.prenom,
+                nom: r.client.nom,
+                email: r.client.email,
+                telephone: r.client.telephone,
+                adresse: (r.client as any).adresse
+              }
+            : { id: 0, prenom: '', nom: '', email: '', telephone: '' },
+          chambre: r.chambre
+            ? {
+                id: r.chambre.id,
+                nom: r.chambre.nom,
+                numero: r.chambre.numero
+              }
+            : { id: 0, nom: '', numero: '' },
+
+          statutPaiement: mapStatutPaiementReservation(r.statutPaiement),
+
+          groupe: r.groupe || false,
+          services: [],
+          paiements: paiements.map(p => ({
+            id: p.id,
+            montant: Number(p.montant) || 0,
+            modePaiement: (p as any).modePaiement,
+            typePaiement: (p as any).typePaiement,
+            datePaiement: (p as any).datePaiement,
+            reference: (p as any).reference,
+            notes: (p as any).notes,
+            numeroCheque: (p as any).numeroCheque,
+            banqueEmettrice: (p as any).banqueEmettrice,
+            typeCarte: (p as any).typeCarte,
+            numeroCarteMasque: (p as any).numeroCarteMasque,
+            referenceVirement: (p as any).referenceVirement,
+            createdAt: (p as any).createdAt
+          }))
+        };
+      });
 
       return res.status(200).json({
         success: true,
@@ -247,6 +298,17 @@ export class ReservationsController {
     }
   };
 
+  // ============================================================
+  // ✅ getById — CORRIGÉ
+  // ------------------------------------------------------------
+  // Renvoie désormais tous les champs sous les noms attendus par
+  // NouvelleReservationPage.tsx en mode édition :
+  //  - demandesSpeciales / demandeSpeciale (double clé pour compat)
+  //  - horaireArriveeTardive / heureArriveePrevisionnelle
+  //  - commentaire (basé sur notesInternes, qui est le vrai champ stocké)
+  //  - canalAcquisition, groupe, nbVelos
+  //  - chambreId / clientId à plat (utile si client/chambre non inclus)
+  // ============================================================
   getById = async (req: Request, res: Response) => {
     try {
       const { id } = req.params;
@@ -273,6 +335,13 @@ export class ReservationsController {
         });
       }
 
+      const montantTotal = Math.round((Number(reservation.montantTotal) || 0) * 100) / 100;
+      const paiements = reservation.paiements || [];
+      const totalPaye = Math.round(
+        paiements.reduce((sum, p) => sum + (Number(p.montant) || 0), 0) * 100
+      ) / 100;
+      const montantRestantDu = Math.max(0, Math.round((montantTotal - totalPaye) * 100) / 100);
+
       const formattedData = {
         id: reservation.id,
         numero: reservation.numero,
@@ -284,20 +353,33 @@ export class ReservationsController {
         nbNuits: reservation.nbNuits || 1,
         statut: reservation.statut,
         petitDejeunerInclus: reservation.petitDejeunerInclus || false,
-        montantTotal: reservation.montantTotal,
-        montantAcompte: reservation.montantAcompte || 0,
-        montantSolde: reservation.montantSolde || 0,
-        montantRestantDu: reservation.montantRestantDu || 0,
+        montantTotal,
+        montantAcompte: totalPaye,
+        montantSolde: Math.round((Number(reservation.montantSolde) || 0) * 100) / 100,
+        montantRestantDu,
         typeAcompte: reservation.typeAcompte || 30,
+
+        // ✅ CORRECTION — noms cohérents avec ce qu'attend le frontend
         demandeSpeciale: reservation.demandesSpeciales,
+        demandesSpeciales: reservation.demandesSpeciales,
         heureArriveePrevisionnelle: reservation.horaireArriveeTardive,
+        horaireArriveeTardive: reservation.horaireArriveeTardive,
+        commentaire: reservation.notesInternes || '',
+        notesInternes: reservation.notesInternes || '',
+        canalAcquisition: reservation.canalAcquisition || 'DIRECT',
+        groupe: reservation.groupe || false,
+        nbVelos: reservation.nbVelos || 0,
+
         litBebe: reservation.litBebe || false,
         arriveeTardive: !!reservation.horaireArriveeTardive,
         dateCreation: reservation.createdAt,
         motifAnnulation: reservation.motifAnnulation,
+        statutPaiement: mapStatutPaiementReservation(reservation.statutPaiement),
         client: reservation.client,
         chambre: reservation.chambre,
-        paiements: reservation.paiements || [],
+        chambreId: reservation.chambreId,
+        clientId: reservation.clientId,
+        paiements,
         services: [],
         annulation: reservation.annulation,
         historiques: reservation.historiques || []
@@ -317,14 +399,6 @@ export class ReservationsController {
     }
   };
 
-  /**
-   * ✅ CORRECTION — la simulation utilisait resultat.totalTTC en oubliant la
-   * taxe de séjour (resultat.montantTotal = totalTTC + taxeSejour), et
-   * dupliquait toute la logique de code promo (avec des risques d'incohérence
-   * avec create()). On délègue maintenant entièrement le code promo à
-   * TarifService.calculerTarif(), qui utilise les vrais champs du modèle
-   * PromoCode et vérifie aussi nbUtilisationsMax (jamais vérifié avant !).
-   */
   calculer = async (req: Request, res: Response) => {
     try {
       console.log('📥 calculer - Body reçu:', req.body);
@@ -361,32 +435,46 @@ export class ReservationsController {
         });
       }
 
-      // ✅ Le code promo est validé et appliqué DANS TarifService (appliquerUsage=false
-      // car ceci n'est qu'une simulation : on ne consomme jamais le quota d'usages ici).
-      let resultat;
-      try {
-        resultat = await this.tarifService.calculerTarif(
-          finalChambreId,
-          finalDateArrivee,
-          finalDateDepart,
-          finalNbAdultes,
-          finalNbEnfants,
-          finalPetitDejeuner,
-          finalCodePromo,
-          false
-        );
-      } catch (e) {
-        return res.status(400).json({ success: false, message: (e as Error).message });
-      }
+      const resultat = await this.tarifService.calculerTarif(
+        finalChambreId,
+        finalDateArrivee,
+        finalDateDepart,
+        finalNbAdultes,
+        finalNbEnfants,
+        finalPetitDejeuner
+      );
 
       const nbNuits = resultat.detail?.nbNuits || 1;
       const supplementVelos = finalNbVelos * 10 * nbNuits;
-      const supplementLitBebe = 0;
+      const supplementLitBebe = finalLitBebe ? 0 : 0;
 
-      // ✅ CORRECTION — resultat.montantTotal inclut la taxe de séjour,
-      // contrairement à resultat.totalTTC utilisé auparavant (qui l'omettait).
-      const totalFinal = resultat.montantTotal + supplementVelos + supplementLitBebe;
-      const reductionPromo = resultat.codePromoApplique?.reduction || 0;
+      let sousTotal = resultat.totalTTC + supplementVelos + supplementLitBebe;
+      let reductionPromo = 0;
+      let promoApplied = null;
+
+      if (finalCodePromo) {
+        const promo = await PromoCode.findOne({
+          where: {
+            code: { [Op.iLike]: finalCodePromo.toUpperCase() },
+            actif: true,
+            dateDebut: { [Op.lte]: new Date() },
+            dateFin: { [Op.gte]: new Date() }
+          }
+        });
+
+        if (promo) {
+          reductionPromo = sousTotal * ((promo.tauxReduction || 0) / 100);
+          sousTotal = sousTotal - reductionPromo;
+          promoApplied = {
+            id: promo.id,
+            code: promo.code,
+            tauxReduction: promo.tauxReduction,
+            montantReduit: reductionPromo
+          };
+        }
+      }
+
+      const totalFinal = sousTotal;
 
       return res.status(200).json({
         success: true,
@@ -399,16 +487,16 @@ export class ReservationsController {
           supplementVelos: Math.round(supplementVelos * 100) / 100,
           supplementLitBebe: Math.round(supplementLitBebe * 100) / 100,
           reductionPromo: Math.round(reductionPromo * 100) / 100,
-          promoApplied: resultat.codePromoApplique,
+          promoApplied,
           detail: {
             ...resultat.detail,
-            prixNuitFinal: Math.round((resultat.detail?.prixNuitFinal || 0) * 100) / 100,
-            prixMoyenNuit: Math.round((resultat.detail?.prixMoyenNuit || 0) * 100) / 100,
-            prixBaseParNuit: Math.round((resultat.detail?.prixBaseParNuit || 0) * 100) / 100,
-            sousTotalHebergement: Math.round((resultat.detail?.sousTotalHebergement || 0) * 100) / 100,
-            prixPetitDejeunerHT: Math.round((resultat.detail?.prixPetitDejeunerHT || 0) * 100) / 100,
-            prixEnfantsHT: Math.round((resultat.detail?.prixEnfantsHT || 0) * 100) / 100,
-            prixLitsSuppHT: Math.round((resultat.detail?.prixLitsSuppHT || 0) * 100) / 100,
+            prixNuitFinal: Math.round(resultat.detail?.prixNuitFinal * 100) / 100 || 0,
+            prixMoyenNuit: Math.round(resultat.detail?.prixMoyenNuit * 100) / 100 || 0,
+            prixBaseParNuit: Math.round(resultat.detail?.prixBaseParNuit * 100) / 100 || 0,
+            sousTotalHebergement: Math.round(resultat.detail?.sousTotalHebergement * 100) / 100 || 0,
+            prixPetitDejeunerHT: Math.round(resultat.detail?.prixPetitDejeunerHT * 100) / 100 || 0,
+            prixEnfantsHT: Math.round(resultat.detail?.prixEnfantsHT * 100) / 100 || 0,
+            prixLitsSuppHT: Math.round(resultat.detail?.prixLitsSuppHT * 100) / 100 || 0,
             nbNuits,
             saison: resultat.detail?.saison || 'MOYENNE',
             detailNuits: resultat.detail?.detailNuits || []
@@ -425,10 +513,8 @@ export class ReservationsController {
             nbVelos: finalNbVelos,
             litBebe: finalLitBebe
           },
-          // ✅ Purement indicatif : le vrai acompte minimum (RG3, ≥30%) est
-          // recalculé et imposé à la création dans create().
-          acompte: Math.round(totalFinal * (TAUX_ACOMPTE_MIN / 100) * 100) / 100,
-          solde: Math.round(totalFinal * (1 - TAUX_ACOMPTE_MIN / 100) * 100) / 100
+          acompte: Math.round(totalFinal * 0.3 * 100) / 100,
+          solde: Math.round(totalFinal * 0.7 * 100) / 100
         }
       });
 
@@ -441,40 +527,7 @@ export class ReservationsController {
     }
   };
 
-  /**
-   * ✅ CORRECTIONS MAJEURES apportées à create() :
-   *
-   * 1) RG1 (§Annexe 3, US-07 "vérification simultanée") : la vérification de
-   *    disponibilité et la création de la réservation se faisaient sans
-   *    transaction ni verrou, exposant à une double-réservation en cas de
-   *    requêtes concurrentes sur la même chambre/période. Tout est désormais
-   *    encapsulé dans une transaction Sequelize avec verrouillage de ligne.
-   *
-   * 2) RG3 (acompte ≥ 30%) : `typeAcompte` pouvait être fourni à n'importe
-   *    quelle valeur entre 0 et 100 (`Math.min(Math.max(finalTypeAcompte||30,0),100)`),
-   *    permettant un acompte de 0% ou 10%. On impose maintenant un minimum de
-   *    30% (TAUX_ACOMPTE_MIN), avec rejet explicite sinon.
-   *
-   * 3) BUG CRITIQUE : la réservation était créée directement avec
-   *    `statutPaiement = ACOMPTE_RECU` (voire `statut = CONFIRMEE` si
-   *    typeAcompte >= 100) alors qu'AUCUN paiement n'a encore été enregistré
-   *    dans la table Payment à ce stade ! Cela cassait complètement les
-   *    alertes §3.4.2 (UC_AlerteAcompte / UC_Impayes dans paiements.controller),
-   *    qui ne voyaient jamais ces réservations comme "en attente". Désormais,
-   *    toute nouvelle réservation démarre systématiquement à
-   *    EN_ATTENTE_ACOMPTE / ACOMPTE_EN_ATTENTE ; c'est
-   *    paiements.controller.updateReservationPaymentStatus() qui la fera
-   *    passer à CONFIRMEE / ACOMPTE_RECU quand un vrai paiement sera enregistré.
-   *
-   * 4) Taxe de séjour oubliée du montantTotal stocké (resultat.totalTTC au
-   *    lieu de resultat.montantTotal) — corrigé.
-   *
-   * 5) Code promo : logique dupliquée et jamais bornée par nbUtilisationsMax,
-   *    désormais centralisée dans TarifService (appliquerUsage=true ici
-   *    puisque la réservation est réellement créée).
-   */
   create = async (req: Request, res: Response) => {
-    const t = await sequelize.transaction();
     try {
       console.log('📥 Création réservation - Body:', req.body);
 
@@ -505,48 +558,33 @@ export class ReservationsController {
       const finalCommentaire = commentaire || '';
       const finalGroupe = groupe || false;
       const finalNbVelos = parseInt(nbVelos || nb_velos || 0);
-      const finalTypeAcompte = parseInt(typeAcompte || type_acompte || TAUX_ACOMPTE_MIN);
+      const finalTypeAcompte = parseInt(typeAcompte || type_acompte || 30);
 
       const userId = (req as any).user?.id;
 
       if (!finalClientId || !finalChambreId || !finalDateArrivee || !finalDateDepart) {
-        await t.rollback();
         return res.status(400).json({
           success: false,
           message: 'clientId, chambreId, dateArrivee et dateDepart sont requis'
         });
       }
 
-      // ✅ RG3 — refus explicite d'un acompte en dessous du minimum légal du gîte
-      if (finalTypeAcompte < TAUX_ACOMPTE_MIN || finalTypeAcompte > 100) {
-        await t.rollback();
-        return res.status(400).json({
-          success: false,
-          message: `Le taux d'acompte doit être compris entre ${TAUX_ACOMPTE_MIN}% et 100% (RG3)`
-        });
-      }
-
-      const chambre = await Room.findByPk(finalChambreId, { transaction: t });
+      const chambre = await Room.findByPk(finalChambreId);
       if (!chambre) {
-        await t.rollback();
         return res.status(404).json({
           success: false,
           message: 'Chambre non trouvée'
         });
       }
 
-      const client = await Client.findByPk(finalClientId, { transaction: t });
+      const client = await Client.findByPk(finalClientId);
       if (!client) {
-        await t.rollback();
         return res.status(404).json({
           success: false,
           message: 'Client non trouvé'
         });
       }
 
-      // ✅ RG1 — vérification de disponibilité + verrou de ligne dans la MÊME
-      // transaction que la création, pour empêcher deux requêtes concurrentes
-      // de réserver la même chambre sur des dates chevauchantes (US-07 §8.1).
       const existingReservation = await Reservation.findOne({
         where: {
           chambreId: finalChambreId,
@@ -557,117 +595,109 @@ export class ReservationsController {
               dateDepart: { [Op.gt]: finalDateArrivee }
             }
           ]
-        },
-        transaction: t,
-        lock: t.LOCK.UPDATE
+        }
       });
 
       if (existingReservation) {
-        await t.rollback();
         return res.status(409).json({
           success: false,
           message: 'Cette chambre n\'est pas disponible sur cette période'
         });
       }
 
-      // ✅ Code promo entièrement géré par TarifService (validation +
-      // nbUtilisationsMax + incrémentation réelle car appliquerUsage=true)
-      let resultat;
-      try {
-        resultat = await this.tarifService.calculerTarif(
-          finalChambreId,
-          finalDateArrivee,
-          finalDateDepart,
-          finalNbAdultes,
-          finalNbEnfants,
-          finalPetitDejeunerInclus,
-          finalCodePromo,
-          true
-        );
-      } catch (e) {
-        await t.rollback();
-        return res.status(400).json({ success: false, message: (e as Error).message });
-      }
+      const resultat = await this.tarifService.calculerTarif(
+        finalChambreId,
+        finalDateArrivee,
+        finalDateDepart,
+        finalNbAdultes,
+        finalNbEnfants,
+        finalPetitDejeunerInclus
+      );
 
+      let montantTotal = resultat.totalTTC || 0;
       const nbNuits = resultat.detail?.nbNuits || 1;
       const supplementVelos = finalNbVelos * 10 * nbNuits;
-      // ✅ CORRECTION — resultat.montantTotal (et non resultat.totalTTC) pour
-      // inclure la taxe de séjour dans le montant réellement dû.
-      const montantTotal = resultat.montantTotal + supplementVelos;
+      montantTotal += supplementVelos;
 
-      const codePromoId = resultat.codePromoApplique?.id;
-      const reductionPromo = resultat.codePromoApplique?.reduction || 0;
+      let codePromoId: number | undefined = undefined;
+      let reductionPromo = 0;
 
-      const pourcentageAcompte = finalTypeAcompte;
+      if (finalCodePromo) {
+        const promo = await PromoCode.findOne({
+          where: {
+            code: { [Op.iLike]: finalCodePromo.toUpperCase() },
+            actif: true,
+            dateDebut: { [Op.lte]: new Date() },
+            dateFin: { [Op.gte]: new Date() }
+          }
+        });
+
+        if (promo) {
+          reductionPromo = montantTotal * ((promo.tauxReduction || 0) / 100);
+          montantTotal = montantTotal - reductionPromo;
+          codePromoId = promo.id;
+          await promo.increment('nbUtilisations');
+        }
+      }
+
+      const pourcentageAcompte = Math.min(Math.max(finalTypeAcompte || 30, 0), 100);
       const montantAcompte = montantTotal * (pourcentageAcompte / 100);
       const montantSolde = montantTotal - montantAcompte;
 
-      // ✅ CORRECTION CRITIQUE (RG3) — une réservation ne peut être CONFIRMEE
-      // / avoir un statutPaiement ACOMPTE_RECU que lorsqu'un paiement réel a
-      // été enregistré (voir paiements.controller.updateReservationPaymentStatus).
-      // À la création, aucun paiement n'existe encore : la réservation démarre
-      // TOUJOURS en attente, quel que soit le taux d'acompte demandé.
-      const statutInitial = StatutReservation.EN_ATTENTE_ACOMPTE;
-      const statutPaiementInitial = StatutPaiement.ACOMPTE_EN_ATTENTE;
+      const statutInitial = pourcentageAcompte >= 100
+        ? StatutReservation.CONFIRMEE
+        : StatutReservation.EN_ATTENTE_ACOMPTE;
+
+      const statutPaiementInitial = pourcentageAcompte >= 100
+        ? StatutPaiement.SOLDE_COMPLET
+        : (pourcentageAcompte > 0 ? StatutPaiement.ACOMPTE_RECU : StatutPaiement.ACOMPTE_EN_ATTENTE);
 
       const year = new Date().getFullYear();
-      const count = (await Reservation.count({ transaction: t })) + 1;
+      const count = await Reservation.count() + 1;
       const numero = `RES-${year}-${String(count).padStart(4, '0')}`;
 
-      const reservation = await Reservation.create(
-        {
-          numero,
-          clientId: finalClientId,
-          chambreId: finalChambreId,
-          dateArrivee: finalDateArrivee,
-          dateDepart: finalDateDepart,
-          nbAdultes: finalNbAdultes,
-          nbEnfants: finalNbEnfants,
-          agesEnfants: finalAgesEnfants || undefined,
-          demandesSpeciales: finalDemandesSpeciales || undefined,
-          horaireArriveeTardive: finalHoraireArriveeTardive || undefined,
-          litBebe: finalLitBebe,
-          petitDejeunerInclus: finalPetitDejeunerInclus,
-          montantTotal: Math.round(montantTotal * 100) / 100,
-          montantAcompte: Math.round(montantAcompte * 100) / 100,
-          montantSolde: Math.round(montantSolde * 100) / 100,
-          montantPenalite: 0,
+      const reservation = await Reservation.create({
+        numero,
+        clientId: finalClientId,
+        chambreId: finalChambreId,
+        dateArrivee: finalDateArrivee,
+        dateDepart: finalDateDepart,
+        nbAdultes: finalNbAdultes,
+        nbEnfants: finalNbEnfants,
+        agesEnfants: finalAgesEnfants || undefined,
+        demandesSpeciales: finalDemandesSpeciales || undefined,
+        horaireArriveeTardive: finalHoraireArriveeTardive || undefined,
+        litBebe: finalLitBebe,
+        petitDejeunerInclus: finalPetitDejeunerInclus,
+        montantTotal: Math.round(montantTotal * 100) / 100,
+        montantAcompte: Math.round(montantAcompte * 100) / 100,
+        montantSolde: Math.round(montantSolde * 100) / 100,
+        montantPenalite: 0,
+        statut: statutInitial,
+        statutPaiement: statutPaiementInitial,
+        creePar: userId,
+        notesInternes: finalCommentaire || undefined,
+        codePromoId: codePromoId,
+        nbVelos: finalNbVelos,
+        groupe: finalGroupe,
+        canalAcquisition: finalCanalAcquisition,
+        typeAcompte: pourcentageAcompte
+      });
+
+      await reservation.reload();
+
+      await ReservationHistory.create({
+        reservationId: reservation.id,
+        action: 'CREATE',
+        nouvelleValeur: {
           statut: statutInitial,
-          statutPaiement: statutPaiementInitial,
-          creePar: userId,
-          notesInternes: finalCommentaire || undefined,
-          codePromoId: codePromoId,
-          nbVelos: finalNbVelos,
-          groupe: finalGroupe,
-          canalAcquisition: finalCanalAcquisition,
-          // ✅ Le taux d'acompte choisi (30% par défaut, ou plus, ex. 50% pour
-          // un groupe) est conservé pour être réutilisé tel quel lors d'une
-          // modification ultérieure (voir correction dans update()).
-          typeAcompte: pourcentageAcompte
+          montantTotal,
+          typeAcompte: pourcentageAcompte,
+          montantAcompte: Math.round(montantAcompte * 100) / 100
         },
-        { transaction: t }
-      );
+        utilisateurId: userId
+      });
 
-      await reservation.reload({ transaction: t });
-
-      await ReservationHistory.create(
-        {
-          reservationId: reservation.id,
-          action: 'CREATE',
-          nouvelleValeur: {
-            statut: statutInitial,
-            montantTotal,
-            typeAcompte: pourcentageAcompte,
-            montantAcompte: Math.round(montantAcompte * 100) / 100
-          },
-          utilisateurId: userId
-        },
-        { transaction: t }
-      );
-
-      await t.commit();
-
-      // ── Effets de bord après commit (chambre, WebSocket, email) ─────
       await this.synchroniserStatutChambre(finalChambreId);
 
       const wsManager = (req as any).wsManager as WebSocketManager;
@@ -727,7 +757,6 @@ export class ReservationsController {
       });
 
     } catch (error) {
-      await t.rollback();
       console.error('❌ Erreur create:', error);
       return res.status(500).json({
         success: false,
@@ -798,18 +827,10 @@ export class ReservationsController {
         const nbNuits = resultat.detail?.nbNuits || 1;
         const nbVelosFinal = nbVelos !== undefined ? nbVelos : (reservation.nbVelos || 0);
         const supplementVelos = nbVelosFinal * 10 * nbNuits;
-        // ✅ CORRECTION — resultat.montantTotal inclut la taxe de séjour
-        // (au lieu de resultat.totalTTC qui l'omettait).
-        const montantTotal = resultat.montantTotal + supplementVelos;
-
-        // ✅ CORRECTION — on réutilise le taux d'acompte D'ORIGINE de la
-        // réservation (reservation.typeAcompte, ex. 50% pour un groupe) au
-        // lieu de recalculer avec un 30% figé en dur, ce qui écrasait le
-        // choix initial de l'employé à chaque modification de dates.
-        const tauxAcompte = reservation.typeAcompte || TAUX_ACOMPTE_MIN;
+        const montantTotal = (resultat.totalTTC || 0) + supplementVelos;
 
         reservation.montantTotal = Math.round(montantTotal * 100) / 100;
-        reservation.montantAcompte = Math.round(montantTotal * (tauxAcompte / 100) * 100) / 100;
+        reservation.montantAcompte = Math.round(montantTotal * 0.3 * 100) / 100;
         reservation.montantSolde = Math.round((montantTotal - reservation.montantAcompte) * 100) / 100;
         reservation.dateArrivee = dateArrivee;
         reservation.dateDepart = dateDepart;
@@ -1052,7 +1073,7 @@ export class ReservationsController {
       }, 0);
 
       const tauxOccupation = totalChambres > 0 ? (nuitées / (totalChambres * joursDansMois)) * 100 : 0;
-      const totalChiffreAffaires = reservations.reduce((total, r) => total + r.montantTotal, 0);
+      const totalChiffreAffaires = reservations.reduce((total, r) => total + (Number(r.montantTotal) || 0), 0);
 
       return res.status(200).json({
         success: true,

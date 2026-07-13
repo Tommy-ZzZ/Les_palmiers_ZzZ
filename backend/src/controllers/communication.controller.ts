@@ -2,10 +2,28 @@
 import { Request, Response } from 'express';
 import { Op } from 'sequelize';
 import { Message, MessageEmail, Client, Reservation, Room, HistoriqueModification, User } from '../models';
-import { envoyerViaOVH, substituerVariables } from '../services/email.service';
+import { envoyerViaOVH, substituerVariables, testerConfigEmail } from '../services/email.service';
 
 // ─── CONTROLLER ───
 export class CommunicationController {
+  // ============================================
+  // TEST DE CONFIGURATION EMAIL
+  // ============================================
+
+  async testerEmail(req: Request, res: Response) {
+    try {
+      const resultat = await testerConfigEmail();
+      res.json(resultat);
+    } catch (error: any) {
+      console.error('[testerEmail] Erreur:', error);
+      res.status(500).json({ 
+        success: false, 
+        message: 'Erreur lors du test de la configuration email',
+        error: error.message 
+      });
+    }
+  }
+
   // ============================================
   // MODÈLES — §3.6.2
   // ============================================

@@ -10,7 +10,13 @@ import {
   CalendarRange, Coffee, Save, Bookmark,
   BookmarkCheck, LayoutGrid, LayoutList,
   Sun as SunIcon, Moon as MoonIcon,
-  Wifi as WifiIcon, WifiOff, AlertCircle
+  Wifi as WifiIcon, WifiOff, AlertCircle,
+  ChevronDown, ChevronUp, Phone, Mail,
+  History, Star, Award, UserCheck,
+  Search, ChevronRight as ChevronRightIcon,
+  UserCircle, Euro, Calendar as CalendarIcon2,
+  MapPin, Link2, ExternalLink, Clock as ClockIcon,
+  Heart // ✅ AJOUTÉ : Heart importé
 } from 'lucide-react';
 import {
   format, startOfMonth, endOfMonth, eachDayOfInterval,
@@ -18,7 +24,8 @@ import {
   addMonths, subMonths, startOfWeek, endOfWeek,
   getWeek, differenceInDays,
   isWithinInterval, addDays, subDays, isWeekend,
-  addWeeks, subWeeks, startOfDay, endOfDay
+  addWeeks, subWeeks, startOfDay, endOfDay,
+  differenceInCalendarDays, formatDistanceToNow
 } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import api from '../services/api';
@@ -54,6 +61,19 @@ interface Client {
   nom: string;
   email: string;
   telephone: string;
+  statut?: string;
+  nb_sejours?: number;
+  nbSejoursRealises?: number;
+  vip?: boolean;
+  ville?: string;
+  pays?: string;
+  montant_total_depense?: number;
+  montantTotalPaye?: number;
+  civilite?: string;
+  code_postal?: string;
+  adresse?: string;
+  dateCreation?: string;
+  date_creation?: string;
 }
 
 interface Reservation {
@@ -75,6 +95,7 @@ interface Reservation {
   clientId?: number;
   chambreNom?: string;
   chambreNumero?: string;
+  montantTotal?: number;
 }
 
 interface Blockage {
@@ -106,6 +127,17 @@ interface EvenementCalendrier {
   heureArrivee?: string;
   heureDepart?: string;
   plageHoraire?: PlageHoraire;
+  montantTotal?: number;
+}
+
+interface ClientAvecReservations extends Client {
+  reservations: EvenementCalendrier[];
+  nbReservations: number;
+  totalNuits: number;
+  totalDepense: number;
+  dernierSejour?: Date;
+  premierSejour?: Date;
+  chambresFavorites: string[];
 }
 
 interface FiltresSauvegardes {
@@ -178,6 +210,13 @@ const STATUT_CHAMBRE_LABELS: Record<StatutChambre, string> = {
   EN_MAINTENANCE: 'Maintenance',
   HORS_SERVICE: 'Hors service',
   BLOQUEE: 'Bloquée',
+};
+
+const STATUT_CLIENT_LABELS: Record<string, { label: string; className: string; icon: React.ReactNode }> = {
+  VIP: { label: '⭐ VIP', className: 'bg-purple-100 text-purple-800 border-purple-200', icon: <Award size={12} className="text-purple-500" /> },
+  REGULIER: { label: '🔄 Régulier', className: 'bg-blue-100 text-blue-800 border-blue-200', icon: <UserCheck size={12} className="text-blue-500" /> },
+  FIDELE: { label: '❤️ Fidèle', className: 'bg-rose-100 text-rose-800 border-rose-200', icon: <Heart size={12} className="text-rose-500" /> },
+  NOUVEAU: { label: '🆕 Nouveau', className: 'bg-gray-100 text-gray-800 border-gray-200', icon: <User size={12} className="text-gray-500" /> },
 };
 
 // ============================================================
@@ -292,13 +331,447 @@ const EventChip = ({
 };
 
 // ============================================================
+// SECTION CLIENTS
+// ============================================================
+
+const ClientsSection = ({
+  clients,
+  evenements,
+  loading,
+  onSelectClient,
+  selectedClientId
+}: {
+  clients: Client[];
+  evenements: EvenementCalendrier[];
+  loading: boolean;
+  onSelectClient: (clientId: number | null) => void;
+  selectedClientId: number | null;
+}) => {
+  const [searchTerm, setSearchTerm] = useState('');
+  const [selectedClientData, setSelectedClientData] = useState<ClientAvecReservations | null>(null);
+  const [expandedClientId, setExpandedClientId] = useState<number | null>(null);
+
+  // Construire les données clients avec leurs réservations
+  const clientsAvecReservations = useMemo(() => {
+    const map = new Map<number, ClientAvecReservations>();
+
+    // Initialiser avec tous les clients
+    clients.forEach(client => {
+      map.set(client.id, {
+        ...client,
+        reservations: [],
+        nbReservations: 0,
+        totalNuits: 0,
+        totalDepense: 0,
+        chambresFavorites: [],
+      });
+    });
+
+    // Ajouter les réservations
+    evenements.forEach(evt => {
+      if (evt.type === 'RESERVATION' && evt.clientId) {
+        const clientData = map.get(evt.clientId);
+        if (clientData) {
+          clientData.reservations.push(evt);
+          clientData.nbReservations++;
+          clientData.totalNuits += evt.nbNuits || 0;
+          clientData.totalDepense += evt.montantTotal || 0;
+
+          // Suivi des chambres favorites
+          if (evt.chambreNom && !clientData.chambresFavorites.includes(evt.chambreNom)) {
+            clientData.chambresFavorites.push(evt.chambreNom);
+          }
+
+          // Dernier séjour
+          const dateArrivee = parseISO(evt.dateDebut);
+          if (!clientData.dernierSejour || dateArrivee > clientData.dernierSejour) {
+            clientData.dernierSejour = dateArrivee;
+          }
+          if (!clientData.premierSejour || dateArrivee < clientData.premierSejour) {
+            clientData.premierSejour = dateArrivee;
+          }
+        }
+      }
+    });
+
+    // Filtrer les clients sans réservation si un filtre est actif
+    const filtered = Array.from(map.values());
+
+    return filtered.sort((a, b) => b.nbReservations - a.nbReservations);
+  }, [clients, evenements]);
+
+  // Filtrer par recherche
+  const filteredClients = useMemo(() => {
+    if (!searchTerm.trim()) return clientsAvecReservations;
+    const q = searchTerm.toLowerCase().trim();
+    return clientsAvecReservations.filter(c =>
+      c.nom.toLowerCase().includes(q) ||
+      c.prenom.toLowerCase().includes(q) ||
+      c.email?.toLowerCase().includes(q) ||
+      c.telephone?.includes(q)
+    );
+  }, [clientsAvecReservations, searchTerm]);
+
+  // Sélectionner un client pour afficher ses détails
+  const handleSelectClient = (client: ClientAvecReservations) => {
+    setSelectedClientData(client);
+    setExpandedClientId(client.id);
+    onSelectClient(client.id);
+  };
+
+  // Désélectionner
+  const handleDeselectClient = () => {
+    setSelectedClientData(null);
+    setExpandedClientId(null);
+    onSelectClient(null);
+  };
+
+  // Formater la date
+  const formatDate = (date: Date) => {
+    return format(date, 'dd MMM yyyy', { locale: fr });
+  };
+
+  // Obtenir le statut du client
+  const getClientStatut = (client: ClientAvecReservations) => {
+    if (client.vip || client.statut === 'VIP') return 'VIP';
+    if (client.nbReservations >= 3) return 'FIDELE';
+    if (client.nbReservations >= 2) return 'REGULIER';
+    return 'NOUVEAU';
+  };
+
+  if (loading) {
+    return (
+      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
+        <div className="flex items-center justify-center py-8">
+          <Loader2 size={24} className="animate-spin text-emerald-500" />
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+      {/* En-tête */}
+      <div className="px-5 py-4 border-b border-gray-100 flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-3">
+          <div className="p-2 bg-gradient-to-br from-emerald-100 to-emerald-200 rounded-xl">
+            <Users size={18} className="text-emerald-600" />
+          </div>
+          <div>
+            <h3 className="font-semibold text-gray-900 text-sm">Clients</h3>
+            <p className="text-xs text-gray-400">
+              {clientsAvecReservations.filter(c => c.nbReservations > 0).length} clients actifs · {clients.length} total
+            </p>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-2 flex-1 max-w-sm">
+          <div className="relative flex-1">
+            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+            <input
+              type="text"
+              placeholder="Rechercher un client..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="w-full pl-9 pr-4 py-2 text-sm border border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-400 outline-none text-gray-800 placeholder-gray-400 bg-gray-50 hover:bg-white transition-colors"
+            />
+          </div>
+          {selectedClientData && (
+            <button
+              onClick={handleDeselectClient}
+              className="px-3 py-2 text-xs font-medium text-gray-500 hover:text-gray-700 border border-gray-200 rounded-xl hover:bg-gray-50 transition-colors"
+            >
+              <X size={14} />
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* Liste des clients */}
+      <div className="divide-y divide-gray-50 max-h-[400px] overflow-y-auto">
+        {filteredClients.length === 0 ? (
+          <div className="p-8 text-center text-gray-400">
+            <Users size={32} className="mx-auto mb-2 opacity-30" />
+            <p className="text-sm">Aucun client trouvé</p>
+          </div>
+        ) : (
+          filteredClients.map((client) => {
+            const statut = getClientStatut(client);
+            const statutConfig = STATUT_CLIENT_LABELS[statut] || STATUT_CLIENT_LABELS.NOUVEAU;
+            const isExpanded = expandedClientId === client.id;
+
+            return (
+              <div
+                key={client.id}
+                className={`transition-all duration-200 ${
+                  isExpanded ? 'bg-emerald-50/40' : 'hover:bg-gray-50/60'
+                }`}
+              >
+                {/* Ligne client */}
+                <div
+                  className="px-5 py-3 flex items-center gap-4 cursor-pointer"
+                  onClick={() => {
+                    if (isExpanded) {
+                      setExpandedClientId(null);
+                      setSelectedClientData(null);
+                      onSelectClient(null);
+                    } else {
+                      handleSelectClient(client);
+                    }
+                  }}
+                >
+                  {/* Avatar */}
+                  <div className={`w-10 h-10 rounded-full flex items-center justify-center text-white font-semibold text-sm shrink-0 ${
+                    statut === 'VIP' ? 'bg-gradient-to-br from-purple-500 to-purple-700' :
+                    statut === 'FIDELE' ? 'bg-gradient-to-br from-rose-400 to-rose-600' :
+                    statut === 'REGULIER' ? 'bg-gradient-to-br from-blue-400 to-blue-600' :
+                    'bg-gradient-to-br from-gray-400 to-gray-600'
+                  }`}>
+                    {client.prenom?.charAt(0)}{client.nom?.charAt(0)}
+                  </div>
+
+                  {/* Infos client */}
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="font-medium text-gray-900 text-sm">
+                        {client.prenom} {client.nom}
+                      </span>
+                      <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full border ${statutConfig.className}`}>
+                        {statutConfig.icon}
+                        {statutConfig.label}
+                      </span>
+                      {client.nbReservations > 0 && (
+                        <span className="text-[10px] bg-gray-100 text-gray-500 px-2 py-0.5 rounded-full">
+                          {client.nbReservations} séjour{client.nbReservations > 1 ? 's' : ''}
+                        </span>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-3 text-xs text-gray-500 mt-0.5 flex-wrap">
+                      {client.email && (
+                        <span className="flex items-center gap-1">
+                          <Mail size={11} className="text-gray-400" />
+                          {client.email}
+                        </span>
+                      )}
+                      {client.telephone && (
+                        <span className="flex items-center gap-1">
+                          <Phone size={11} className="text-gray-400" />
+                          {client.telephone}
+                        </span>
+                      )}
+                      {client.ville && (
+                        <span className="flex items-center gap-1">
+                          <MapPin size={11} className="text-gray-400" />
+                          {client.ville}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Stats rapides */}
+                  {client.nbReservations > 0 && (
+                    <div className="hidden sm:flex items-center gap-4 text-xs text-gray-500">
+                      <span className="flex items-center gap-1">
+                        <CalendarIcon2 size={12} className="text-gray-400" />
+                        {client.totalNuits} nuits
+                      </span>
+                      {client.totalDepense > 0 && (
+                        <span className="flex items-center gap-1 font-medium text-emerald-600">
+                          <Euro size={12} />
+                          {client.totalDepense}€
+                        </span>
+                      )}
+                    </div>
+                  )}
+
+                  <ChevronDown
+                    size={16}
+                    className={`text-gray-400 transition-transform duration-200 ${
+                      isExpanded ? 'rotate-180' : ''
+                    }`}
+                  />
+                </div>
+
+                {/* Détails étendus */}
+                {isExpanded && (
+                  <div className="px-5 pb-4 pt-1 border-t border-gray-100/60 animate-fadeIn">
+                    {/* Informations détaillées */}
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4">
+                      <div className="bg-white rounded-xl p-3 border border-gray-100">
+                        <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Contact</p>
+                        <p className="text-sm text-gray-800 flex items-center gap-2 mt-1">
+                          <Mail size={14} className="text-gray-400" />
+                          {client.email || 'Non renseigné'}
+                        </p>
+                        <p className="text-sm text-gray-800 flex items-center gap-2">
+                          <Phone size={14} className="text-gray-400" />
+                          {client.telephone || 'Non renseigné'}
+                        </p>
+                        {client.adresse && (
+                          <p className="text-sm text-gray-800 flex items-center gap-2">
+                            <MapPin size={14} className="text-gray-400" />
+                            {client.adresse}, {client.code_postal} {client.ville}
+                          </p>
+                        )}
+                      </div>
+
+                      <div className="bg-white rounded-xl p-3 border border-gray-100">
+                        <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Statistiques</p>
+                        <div className="grid grid-cols-2 gap-2 mt-1">
+                          <div>
+                            <p className="text-[10px] text-gray-400">Séjours</p>
+                            <p className="text-lg font-bold text-gray-900">{client.nbReservations}</p>
+                          </div>
+                          <div>
+                            <p className="text-[10px] text-gray-400">Nuits totales</p>
+                            <p className="text-lg font-bold text-gray-900">{client.totalNuits}</p>
+                          </div>
+                          <div>
+                            <p className="text-[10px] text-gray-400">Dépenses</p>
+                            <p className="text-lg font-bold text-emerald-600">{client.totalDepense}€</p>
+                          </div>
+                          <div>
+                            <p className="text-[10px] text-gray-400">Moyenne/séjour</p>
+                            <p className="text-lg font-bold text-gray-700">
+                              {client.nbReservations > 0 ? Math.round(client.totalDepense / client.nbReservations) : 0}€
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="bg-white rounded-xl p-3 border border-gray-100">
+                        <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Activité</p>
+                        {client.premierSejour && (
+                          <p className="text-sm text-gray-700 flex items-center gap-2">
+                            <History size={14} className="text-gray-400" />
+                            Client depuis {formatDate(client.premierSejour)}
+                          </p>
+                        )}
+                        {client.dernierSejour && (
+                          <p className="text-sm text-gray-700 flex items-center gap-2">
+                            <ClockIcon size={14} className="text-gray-400" />
+                            Dernier séjour : {formatDistanceToNow(client.dernierSejour, { locale: fr, addSuffix: true })}
+                          </p>
+                        )}
+                        {client.chambresFavorites.length > 0 && (
+                          <p className="text-sm text-gray-700 flex items-center gap-2">
+                            <BedDouble size={14} className="text-gray-400" />
+                            Chambres favorites : {client.chambresFavorites.join(', ')}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Réservations du client */}
+                    {client.reservations.length > 0 && (
+                      <div>
+                        <p className="text-[11px] font-semibold text-gray-500 uppercase tracking-wider mb-2 flex items-center gap-2">
+                          <CalendarIcon size={13} className="text-emerald-500" />
+                          Historique des réservations
+                        </p>
+                        <div className="space-y-1.5">
+                          {client.reservations
+                            .sort((a, b) => new Date(b.dateDebut).getTime() - new Date(a.dateDebut).getTime())
+                            .map((res) => {
+                              const colorSet = res.statut ? STATUT_COLORS[res.statut] : null;
+                              return (
+                                <div
+                                  key={res.id}
+                                  className={`flex items-center justify-between p-2.5 rounded-xl border ${colorSet ? colorSet.border : 'border-gray-100'} ${
+                                    colorSet ? colorSet.bg : 'bg-gray-50'
+                                  } cursor-pointer hover:shadow-sm transition-all duration-200`}
+                                  onClick={() => {
+                                    if (res.reservationId) {
+                                      window.location.href = `/reservations/${res.reservationId}`;
+                                    }
+                                  }}
+                                >
+                                  <div className="flex items-center gap-3 flex-1 min-w-0">
+                                    <div className={`w-2 h-2 rounded-full ${colorSet ? colorSet.dot : 'bg-gray-400'}`} />
+                                    <div className="flex-1 min-w-0">
+                                      <div className="flex items-center gap-2 flex-wrap">
+                                        <span className="font-medium text-sm text-gray-800">
+                                          {res.chambreNom || 'Chambre'}
+                                        </span>
+                                        {res.statut && (
+                                          <span className={`text-[10px] font-medium ${colorSet ? colorSet.text : 'text-gray-500'}`}>
+                                            · {STATUT_LABELS[res.statut] || res.statut}
+                                          </span>
+                                        )}
+                                      </div>
+                                      <p className="text-xs text-gray-500">
+                                        {format(parseISO(res.dateDebut), 'dd MMM yyyy', { locale: fr })}
+                                        {' → '}
+                                        {format(parseISO(res.dateFin), 'dd MMM yyyy', { locale: fr })}
+                                        {res.nbNuits && ` · ${res.nbNuits} nuits`}
+                                        {res.nbAdultes && ` · ${res.nbAdultes} pers.`}
+                                      </p>
+                                    </div>
+                                  </div>
+                                  {res.montantTotal && res.montantTotal > 0 && (
+                                    <span className="text-sm font-semibold text-emerald-600">
+                                      {res.montantTotal}€
+                                    </span>
+                                  )}
+                                  <ExternalLink size={14} className="text-gray-400 ml-2 shrink-0" />
+                                </div>
+                              );
+                            })}
+                        </div>
+                      </div>
+                    )}
+
+                    <div className="mt-3 flex gap-2">
+                      <button
+                        onClick={() => {
+                          if (client.id) {
+                            window.location.href = `/clients/${client.id}`;
+                          }
+                        }}
+                        className="px-3 py-1.5 text-xs font-medium text-emerald-600 bg-emerald-50 border border-emerald-200 rounded-lg hover:bg-emerald-100 transition-colors flex items-center gap-1.5"
+                      >
+                        <Eye size={12} /> Voir la fiche client
+                      </button>
+                      <button
+                        onClick={() => {
+                          if (client.id) {
+                            window.location.href = `/communication?clientId=${client.id}`;
+                          }
+                        }}
+                        className="px-3 py-1.5 text-xs font-medium text-blue-600 bg-blue-50 border border-blue-200 rounded-lg hover:bg-blue-100 transition-colors flex items-center gap-1.5"
+                      >
+                        <Mail size={12} /> Envoyer un message
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          })
+        )}
+      </div>
+
+      <style>{`
+        @keyframes fadeIn {
+          from { opacity: 0; transform: translateY(-8px); }
+          to { opacity: 1; transform: translateY(0); }
+        }
+        .animate-fadeIn {
+          animation: fadeIn 0.25s ease-out forwards;
+        }
+      `}</style>
+    </div>
+  );
+};
+
+// ============================================================
 // COMPOSANT PRINCIPAL
 // ============================================================
 
 export default function CalendrierPage() {
   const navigate = useNavigate();
 
-  // ✅ WebSocket - Utilisation de subscribeToChannel
+  // ✅ WebSocket
   const { isConnected, subscribeToChannel } = useWebSocketContext();
 
   // ─── ÉTAT ────────────────────────────────────────────────
@@ -424,6 +897,7 @@ export default function CalendrierPage() {
         heureArrivee: heureArrivee || '15:00',
         heureDepart: r.heureDepart || '11:00',
         plageHoraire: plage,
+        montantTotal: r.montantTotal || 0,
       });
     });
     
@@ -497,26 +971,45 @@ export default function CalendrierPage() {
   // ─── WEBSOCKET ────────────────────────────────────────────
 
   useEffect(() => {
-    // ✅ S'abonner aux canaux pertinents
     if (isConnected) {
       subscribeToChannel('calendrier');
       subscribeToChannel('reservations');
       subscribeToChannel('chambres');
     }
 
-    // ✅ Écouter les événements DOM (fallback)
+    // Écouter les événements DOM
     const handleRefresh = () => {
       console.log('🔄 [Calendrier] Refresh via DOM event');
       loadData();
     };
 
+    // ✅ Écouter les événements WebSocket via l'API
+    const handleWebSocketMessage = (event: Event) => {
+      const customEvent = event as CustomEvent;
+      const data = customEvent.detail;
+      
+      if (data?.type === 'RESERVATION_CREATED' || 
+          data?.type === 'RESERVATION_UPDATED' || 
+          data?.type === 'RESERVATION_CANCELLED' ||
+          data?.type === 'RESERVATION_DELETED' ||
+          data?.type === 'REFRESH_CHAMBRES') {
+        console.log('🔄 [WS] Mise à jour du calendrier:', data.type);
+        loadData();
+      }
+    };
+
+    // Ajouter les écouteurs d'événements DOM (pour le WebSocket)
     window.addEventListener('refresh-chambres', handleRefresh);
     window.addEventListener('chambre-updated', handleRefresh);
     window.addEventListener('reservation-created', handleRefresh);
     window.addEventListener('reservation-updated', handleRefresh);
     window.addEventListener('reservation-cancelled', handleRefresh);
+    window.addEventListener('reservation-deleted', handleRefresh);
+    
+    // Écouter les messages WebSocket via CustomEvent
+    window.addEventListener('websocket-message', handleWebSocketMessage);
 
-    // ✅ Polling de secours toutes les 30 secondes
+    // Polling de secours
     const interval = setInterval(() => {
       if (!isConnected) {
         loadData();
@@ -529,6 +1022,8 @@ export default function CalendrierPage() {
       window.removeEventListener('reservation-created', handleRefresh);
       window.removeEventListener('reservation-updated', handleRefresh);
       window.removeEventListener('reservation-cancelled', handleRefresh);
+      window.removeEventListener('reservation-deleted', handleRefresh);
+      window.removeEventListener('websocket-message', handleWebSocketMessage);
       clearInterval(interval);
     };
   }, [subscribeToChannel, isConnected, loadData]);
@@ -1216,6 +1711,15 @@ export default function CalendrierPage() {
           )}
         </div>
       </div>
+
+      {/* ═══ SECTION CLIENTS ═══════════════════════════════════ */}
+      <ClientsSection
+        clients={clients}
+        evenements={evenements}
+        loading={loading}
+        onSelectClient={setFilterClient}
+        selectedClientId={filterClient}
+      />
 
       {/* ══ MODALE DÉTAILS ════════════════════════════════ */}
       {selectedEvent && (

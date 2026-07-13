@@ -15,7 +15,15 @@ import CalendrierPage from './pages/CalendrierPage';
 import AdminPage from './pages/AdminPage';
 import ServicesAnnexesPage from './pages/ServicesAnnexesPage';
 import CommunicationPage from './pages/CommunicationPage';
+import AjoutNotificationHost from './components/ui/AjoutNotification';
 
+// ============================================
+// COMPOSANTS DE PROTECTION DES ROUTES
+// ============================================
+
+/**
+ * Route protégée nécessitant une authentification
+ */
 function PrivateRoute({ children }: { children: React.ReactNode }) {
   const { token, isLoading } = useAuth();
   
@@ -33,6 +41,9 @@ function PrivateRoute({ children }: { children: React.ReactNode }) {
   return token ? <>{children}</> : <Navigate to="/login" replace />;
 }
 
+/**
+ * Route protégée nécessitant un rôle spécifique
+ */
 function RoleRoute({ children, roles }: { children: React.ReactNode; roles: string[] }) {
   const { user } = useAuth();
   
@@ -43,13 +54,20 @@ function RoleRoute({ children, roles }: { children: React.ReactNode; roles: stri
   return <>{children}</>;
 }
 
+// ============================================
+// APPLICATION PRINCIPALE
+// ============================================
+
 export default function App() {
   return (
     <AuthProvider>
       <WebSocketProvider>
         <BrowserRouter>
           <Routes>
+            {/* Route publique */}
             <Route path="/login" element={<LoginPage />} />
+            
+            {/* Routes protégées */}
             <Route
               path="/"
               element={
@@ -102,8 +120,13 @@ export default function App() {
                 }
               />
             </Route>
+            
+            {/* Fallback */}
             <Route path="*" element={<Navigate to="/dashboard" replace />} />
           </Routes>
+          
+          {/* ✅ Système de notifications global */}
+          <AjoutNotificationHost />
         </BrowserRouter>
       </WebSocketProvider>
     </AuthProvider>

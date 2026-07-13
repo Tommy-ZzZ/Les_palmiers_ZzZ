@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import { reservationService } from '../services/api';
 import { useWebSocketContext } from '../context/WebSocketContext';
+import { notifyAjout } from '../components/ui/AjoutNotification';
 
 // ============================================
 // TYPES
@@ -268,369 +269,6 @@ const ConfirmDialog = ({
 };
 
 // ============================================
-// MODALE FACTURE
-// ============================================
-
-const FactureModal = ({ 
-  isOpen, 
-  onClose, 
-  reservation 
-}: { 
-  isOpen: boolean; 
-  onClose: () => void; 
-  reservation: Reservation | null;
-}) => {
-  const [isExporting, setIsExporting] = useState(false);
-
-  if (!isOpen || !reservation) return null;
-
-  const formatDate = (date: string) => new Date(date).toLocaleDateString('fr-FR', {
-    day: '2-digit', month: 'long', year: 'numeric'
-  });
-
-  const totalServices = reservation.services.reduce((sum, s) => sum + toNumber(s.montant), 0);
-  const totalTTC = toNumber(reservation.montantTotal) + totalServices;
-  const chambresSelectionnees = getReservationChambres(reservation);
-
-  const handleExportPDF = async () => {
-    setIsExporting(true);
-    try {
-      const printWindow = window.open('', '_blank', 'width=800,height=600');
-      if (!printWindow) {
-        toast.error('Veuillez autoriser les pop-ups pour exporter le PDF');
-        setIsExporting(false);
-        return;
-      }
-
-      const styles = `
-        <style>
-          @page { size: A4; margin: 20mm; }
-          body { font-family: 'Arial', sans-serif; color: #1a1a1a; background: white; padding: 20px; }
-          .facture-container { max-width: 800px; margin: 0 auto; }
-          .facture-header {
-            background: linear-gradient(135deg, #065f46, #0d9488);
-            color: white;
-            padding: 20px 30px;
-            border-radius: 12px 12px 0 0;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-          }
-          .facture-header .logo { display: flex; align-items: center; gap: 12px; }
-          .facture-header .logo .icon { font-size: 28px; }
-          .facture-header .logo h1 { font-size: 22px; margin: 0; }
-          .facture-header .logo p { font-size: 12px; opacity: 0.8; margin: 0; }
-          .facture-body { padding: 30px; border: 1px solid #e5e7eb; border-top: none; border-radius: 0 0 12px 12px; }
-          .facture-identity { display: flex; justify-content: space-between; border-bottom: 2px solid #e5e7eb; padding-bottom: 15px; margin-bottom: 20px; }
-          .facture-identity .gite h2 { color: #065f46; margin: 0; }
-          .facture-identity .gite p { margin: 2px 0; font-size: 13px; color: #4b5563; }
-          .facture-client { background: #f9fafb; padding: 15px; border-radius: 8px; margin-bottom: 20px; border: 1px solid #e5e7eb; }
-          .facture-client h4 { font-size: 11px; text-transform: uppercase; color: #6b7280; margin: 0 0 5px 0; letter-spacing: 1px; }
-          .facture-client p { margin: 3px 0; font-size: 14px; }
-          .facture-details {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 12px;
-            background: #ecfdf5;
-            padding: 15px;
-            border-radius: 8px;
-            margin-bottom: 20px;
-            border: 1px solid #a7f3d0;
-          }
-          .facture-details div p:first-child { font-size: 10px; text-transform: uppercase; color: #065f46; font-weight: 600; letter-spacing: 0.5px; margin: 0; }
-          .facture-details div p:last-child { font-size: 14px; font-weight: 500; margin: 2px 0 0 0; }
-          .facture-table { width: 100%; border-collapse: collapse; margin-bottom: 20px; border: 1px solid #e5e7eb; border-radius: 8px; overflow: hidden; }
-          .facture-table th { background: #f9fafb; padding: 10px 15px; text-align: left; font-size: 11px; text-transform: uppercase; color: #6b7280; font-weight: 600; border-bottom: 1px solid #e5e7eb; }
-          .facture-table th:last-child, .facture-table td:last-child { text-align: right; }
-          .facture-table td { padding: 10px 15px; border-bottom: 1px solid #f3f4f6; font-size: 13px; }
-          .facture-table tfoot td { border-top: 2px solid #d1d5db; font-weight: bold; }
-          .facture-total {
-            background: #ecfdf5;
-            padding: 15px 20px;
-            border-radius: 8px;
-            display: flex;
-            justify-content: space-between;
-            font-size: 18px;
-            font-weight: bold;
-            border: 2px solid #065f46;
-            margin-top: 10px;
-          }
-          .facture-total .label { color: #065f46; }
-          .facture-total .amount { color: #065f46; }
-          .facture-footer {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-top: 20px;
-            padding-top: 15px;
-            border-top: 1px solid #e5e7eb;
-          }
-          .facture-footer .logo-small { display: flex; align-items: center; gap: 8px; font-size: 13px; color: #6b7280; }
-          .facture-footer .logo-small .icon { font-size: 18px; }
-          .facture-footer .text { font-size: 12px; color: #6b7280; }
-          @media print { .no-print { display: none !important; } body { padding: 0; } .facture-container { max-width: 100%; } }
-        </style>
-      `;
-
-      const htmlContent = `
-        <!DOCTYPE html>
-        <html>
-        <head>
-          <meta charset="UTF-8">
-          <title>Facture ${reservation.numeroReservation}</title>
-          ${styles}
-        </head>
-        <body>
-          <div class="facture-container">
-            <div class="facture-header">
-              <div class="logo">
-                <span class="icon">🌴</span>
-                <div>
-                  <h1>Les Palmiers</h1>
-                  <p>Gîte de charme - L'Entre-Deux</p>
-                </div>
-              </div>
-              <div style="text-align:right;">
-                <p style="margin:0;font-size:14px;font-weight:600;">Facture</p>
-                <p style="margin:2px 0 0 0;font-size:13px;opacity:0.8;">N° ${reservation.numeroReservation}</p>
-              </div>
-            </div>
-            <div class="facture-body">
-              <div class="facture-identity">
-                <div class="gite">
-                  <h2>🌴 Les Palmiers</h2>
-                  <p>12 Rue des Palmiers, 97440 L'Entre-Deux</p>
-                  <p>📍 La Réunion</p>
-                  <p>📞 0262 12 34 56</p>
-                </div>
-                <div style="text-align:right;">
-                  <p style="font-size:13px;color:#6b7280;margin:0;">Émise le ${new Date().toLocaleDateString('fr-FR')}</p>
-                </div>
-              </div>
-              <div class="facture-client">
-                <h4>👤 CLIENT</h4>
-                <p><strong>${reservation.client_prenom} ${reservation.client_nom}</strong></p>
-                <p>📧 ${reservation.client_email}</p>
-                <p>📞 ${reservation.client_telephone}</p>
-              </div>
-              <div class="facture-details">
-                <div><p>📅 ARRIVÉE</p><p>${formatDate(reservation.dateArrivee)}</p></div>
-                <div><p>📅 DÉPART</p><p>${formatDate(reservation.dateDepart)}</p></div>
-                <div><p>🛏️ CHAMBRE</p><p>${reservation.chambre_nom}</p></div>
-                <div><p>👥 PERSONNES</p><p>${reservation.nbAdultes} adultes${reservation.nbEnfants > 0 ? ` + ${reservation.nbEnfants} enfants` : ''}</p></div>
-              </div>
-              ${chambresSelectionnees.length > 1 ? `
-              <div class="facture-client">
-                <h4>🛏️ CHAMBRES CHOISIES</h4>
-                ${chambresSelectionnees.map((chambre: Chambre) => `
-                  <p><strong>${chambre.nom}</strong> - N° ${chambre.numero || '—'}${chambre.surfaceM2 ? ` · ${chambre.surfaceM2} m²` : ''}${chambre.accessiblePMR ? ' · PMR' : ''}</p>
-                `).join('')}
-              </div>
-              ` : ''}
-              <table class="facture-table">
-                <thead>
-                  <tr><th>DESCRIPTION</th><th style="text-align:center;">QTÉ</th><th style="text-align:right;">PRIX</th><th style="text-align:right;">TOTAL</th></tr>
-                </thead>
-                <tbody>
-                  <tr>
-                    <td>Hébergement - ${reservation.nbNuits} nuits</td>
-                    <td style="text-align:center;">${reservation.nbNuits}</td>
-                    <td style="text-align:right;">${safeFormat((toNumber(reservation.montantTotal)) / Math.max(1, reservation.nbNuits), 0)}€</td>
-                    <td style="text-align:right;font-weight:600;">${safeFormat(reservation.montantTotal, 2)}€</td>
-                  </tr>
-                  ${reservation.petitDejeunerInclus ? `
-                  <tr><td>Petit-déjeuner inclus</td><td style="text-align:center;">-</td><td style="text-align:right;">-</td><td style="text-align:right;color:#065f46;font-weight:600;">Inclus</td></tr>
-                  ` : ''}
-                  ${reservation.services.map((s: ServiceAnnexe) => `
-                  <tr>
-                    <td>${s.libelle || 'Service'}</td>
-                    <td style="text-align:center;">${s.quantite || 1}</td>
-                    <td style="text-align:right;">${safeFormat((s.montant || 0) / Math.max(1, s.quantite || 1), 0)}€</td>
-                    <td style="text-align:right;font-weight:600;">${safeFormat(s.montant, 2)}€</td>
-                  </tr>
-                  `).join('')}
-                </tbody>
-                <tfoot>
-                  <tr><td colspan="3" style="text-align:right;font-weight:bold;">Total TTC</td><td style="text-align:right;font-weight:bold;font-size:16px;color:#065f46;">${safeFormat(totalTTC, 2)}€</td></tr>
-                  ${toNumber(reservation.montantAcompte) > 0 ? `
-                  <tr><td colspan="3" style="text-align:right;font-size:13px;color:#4b5563;">Acompte versé</td><td style="text-align:right;font-size:13px;color:#065f46;font-weight:600;">-${safeFormat(reservation.montantAcompte, 2)}€</td></tr>
-                  ` : ''}
-                  ${toNumber(reservation.montantRestantDu) > 0 ? `
-                  <tr><td colspan="3" style="text-align:right;font-size:13px;font-weight:600;color:#dc2626;">Restant dû</td><td style="text-align:right;font-size:13px;font-weight:bold;color:#dc2626;">${safeFormat(reservation.montantRestantDu, 2)}€</td></tr>
-                  ` : ''}
-                </tfoot>
-              </table>
-              <div class="facture-total"><span class="label">💰 Total à payer</span><span class="amount">${safeFormat(totalTTC, 2)}€</span></div>
-              <div class="facture-footer">
-                <div class="logo-small"><span class="icon">🌴</span><span>Les Palmiers - Gîte de charme</span></div>
-                <div class="text"><p style="margin:0;">Facture générée automatiquement</p><p style="margin:2px 0 0 0;">Merci de votre confiance</p></div>
-              </div>
-            </div>
-          </div>
-          <script>
-            window.onload = function() { setTimeout(function() { window.print(); }, 500); };
-          <\/script>
-        </body>
-        </html>
-      `;
-
-      printWindow.document.write(htmlContent);
-      printWindow.document.close();
-      printWindow.onafterprint = function() { printWindow.close(); };
-      toast.success('📄 PDF généré avec succès');
-    } catch (error) {
-      console.error('Erreur export PDF:', error);
-      toast.error('Erreur lors de la génération du PDF');
-    } finally {
-      setIsExporting(false);
-    }
-  };
-
-  return (
-    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-fadeIn">
-      <div className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
-        <div className="sticky top-0 bg-gradient-to-r from-emerald-700 to-emerald-800 text-white px-6 py-4 flex justify-between items-center rounded-t-2xl">
-          <div className="flex items-center gap-4">
-            <div className="p-2 bg-white/20 rounded-xl backdrop-blur-sm">
-              <Palmtree size={32} className="text-sable-300" />
-            </div>
-            <div>
-              <h3 className="text-xl font-bold">Facture</h3>
-              <p className="text-emerald-200 text-xs">N° {reservation.numeroReservation}</p>
-            </div>
-          </div>
-          <button onClick={onClose} className="p-2 hover:bg-white/20 rounded-xl transition-colors text-white/80 hover:text-white">✕</button>
-        </div>
-        <div id="facture-content" className="p-6 space-y-6">
-          <div className="flex justify-between items-start border-b border-gray-200 pb-4">
-            <div>
-              <div className="flex items-center gap-2">
-                <Palmtree size={20} className="text-emerald-700" />
-                <h2 className="text-xl font-bold text-emerald-800">Les Palmiers</h2>
-              </div>
-              <p className="text-sm text-gray-600">Gîte de charme - L'Entre-Deux</p>
-              <p className="text-xs text-gray-500">12 Rue des Palmiers, 97440 L'Entre-Deux</p>
-              <p className="text-xs text-gray-500">Tél: 0262 12 34 56</p>
-            </div>
-            <div className="text-right">
-              <p className="text-sm font-medium text-gray-900">Facture</p>
-              <p className="text-xs text-gray-500">Émise le {new Date().toLocaleDateString('fr-FR')}</p>
-            </div>
-          </div>
-          <div className="bg-gray-50 rounded-xl p-4 border border-gray-200">
-            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Client</p>
-            <p className="font-medium text-gray-900">{reservation.client_prenom} {reservation.client_nom}</p>
-            <p className="text-sm text-gray-600">{reservation.client_email}</p>
-            <p className="text-sm text-gray-600">{reservation.client_telephone}</p>
-            {reservation.client && (
-              <div className="flex gap-2 mt-1">
-                {reservation.client.vip && <span className="text-xs bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full">⭐ VIP</span>}
-                <span className="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full">
-                  {reservation.client.nb_sejours || 0} séjour{reservation.client.nb_sejours !== 1 ? 's' : ''}
-                </span>
-              </div>
-            )}
-          </div>
-          <div className="grid grid-cols-2 gap-4 bg-emerald-50 rounded-xl p-4 border border-emerald-200">
-            <div><p className="text-xs font-semibold text-emerald-700 uppercase tracking-wider">Arrivée</p><p className="font-medium text-gray-900">{formatDate(reservation.dateArrivee)}</p></div>
-            <div><p className="text-xs font-semibold text-emerald-700 uppercase tracking-wider">Départ</p><p className="font-medium text-gray-900">{formatDate(reservation.dateDepart)}</p></div>
-            <div><p className="text-xs font-semibold text-emerald-700 uppercase tracking-wider">Chambre</p>
-              <p className="font-medium text-gray-900">{reservation.chambre_nom}</p>
-              {reservation.chambre && (
-                <div className="text-xs text-gray-500">
-                  <span className="inline-flex items-center gap-1">🏷️ N°{reservation.chambre.numero}</span>
-                  <span className="inline-flex items-center gap-1 ml-2">📐 {reservation.chambre.surfaceM2}m²</span>
-                  <span className="inline-flex items-center gap-1 ml-2">👁️ {reservation.chambre.vue}</span>
-                  {reservation.chambre.accessiblePMR && <span className="ml-1">♿</span>}
-                </div>
-              )}
-            </div>
-            <div><p className="text-xs font-semibold text-emerald-700 uppercase tracking-wider">Personnes</p><p className="font-medium text-gray-900">{reservation.nbAdultes} adultes{reservation.nbEnfants > 0 ? ` + ${reservation.nbEnfants} enfants` : ''}</p></div>
-          </div>
-
-          {chambresSelectionnees.length > 1 && (
-            <div className="bg-slate-50 rounded-xl p-4 border border-slate-200">
-              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Chambres choisies</p>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                {chambresSelectionnees.map((chambre) => (
-                  <div key={chambre.id} className="bg-white rounded-lg p-3 border border-slate-200">
-                    <p className="font-semibold text-gray-900">{chambre.nom}</p>
-                    <p className="text-xs text-gray-500">N° {chambre.numero || '—'} · {chambre.surfaceM2 || 0} m²</p>
-                    <p className="text-xs text-gray-500 mt-1">
-                      {chambre.capaciteAdultes || 0} adultes
-                      {chambre.accessiblePMR ? ' · PMR' : ''}
-                    </p>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {reservation.chambre?.equipements && reservation.chambre.equipements.length > 0 && (
-            <div className="bg-slate-50 rounded-xl p-3 border border-slate-200">
-              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">Équipements de la chambre</p>
-              <div className="flex flex-wrap gap-1.5">
-                {reservation.chambre.equipements.map((eq, i) => {
-                  const eqIcon: Record<string, React.ReactNode> = {
-                    'climatisation': <Snowflake size={12} className="text-blue-500" />,
-                    'ventilateur': <Wind size={12} className="text-gray-500" />,
-                    'sèche-cheveux': <Wind size={12} className="text-purple-500" />,
-                    'bouilloire': <Coffee size={12} className="text-amber-600" />,
-                    'mini-réfrigérateur': <Coffee size={12} className="text-emerald-600" />,
-                    'wifi': <Wifi size={12} className="text-sky-500" />,
-                    'tv': <Tv size={12} className="text-gray-500" />,
-                  };
-                  return (
-                    <span key={i} className="inline-flex items-center gap-1 text-xs bg-white px-2 py-0.5 rounded-full border border-gray-200 text-gray-700">
-                      {eqIcon[eq] || null}
-                      {eq}
-                    </span>
-                  );
-                })}
-                {reservation.chambre.accessiblePMR && (
-                  <span className="inline-flex items-center gap-1 text-xs bg-blue-50 text-blue-700 px-2 py-0.5 rounded-full border border-blue-200">
-                    ♿ Accessible PMR
-                  </span>
-                )}
-              </div>
-            </div>
-          )}
-
-          <div className="border border-gray-200 rounded-xl overflow-hidden">
-            <table className="w-full text-sm">
-              <thead className="bg-gray-50 border-b border-gray-200">
-                <tr><th className="px-4 py-2 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Description</th><th className="px-4 py-2 text-right text-xs font-semibold text-gray-600 uppercase tracking-wider">Qté</th><th className="px-4 py-2 text-right text-xs font-semibold text-gray-600 uppercase tracking-wider">Prix</th><th className="px-4 py-2 text-right text-xs font-semibold text-gray-600 uppercase tracking-wider">Total</th></tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100">
-                <tr><td className="px-4 py-2 text-gray-800">Hébergement - {reservation.nbNuits} nuits</td><td className="px-4 py-2 text-right text-gray-600">{reservation.nbNuits}</td><td className="px-4 py-2 text-right text-gray-600">{safeFormat((toNumber(reservation.montantTotal)) / Math.max(1, reservation.nbNuits), 0)}€</td><td className="px-4 py-2 text-right font-medium text-gray-900">{safeFormat(reservation.montantTotal, 2)}€</td></tr>
-                {reservation.petitDejeunerInclus && <tr><td className="px-4 py-2 text-gray-800">Petit-déjeuner inclus</td><td className="px-4 py-2 text-right text-gray-600">-</td><td className="px-4 py-2 text-right text-gray-600">-</td><td className="px-4 py-2 text-right font-medium text-emerald-600">Inclus</td></tr>}
-                {reservation.services.map((s: ServiceAnnexe) => (
-                  <tr key={s.id}><td className="px-4 py-2 text-gray-800">{s.libelle || s.type || 'Service'}{s.type === 'LOCATION_VELO' && <Bike size={12} className="inline ml-1 text-gray-400" />}{s.type === 'TRANSFERT_AEROPORT' && <Plane size={12} className="inline ml-1 text-gray-400" />}</td><td className="px-4 py-2 text-right text-gray-600">{s.quantite || 1}</td><td className="px-4 py-2 text-right text-gray-600">{safeFormat((s.montant || 0) / Math.max(1, s.quantite || 1), 0)}€</td><td className="px-4 py-2 text-right font-medium text-gray-900">{safeFormat(s.montant || 0, 2)}€</td></tr>
-                ))}
-              </tbody>
-              <tfoot className="border-t-2 border-gray-300 bg-gray-50">
-                <tr><td colspan="3" className="px-4 py-3 text-right font-bold text-gray-900">Total TTC</td><td className="px-4 py-3 text-right font-bold text-emerald-700 text-lg">{safeFormat(totalTTC, 2)}€</td></tr>
-                {toNumber(reservation.montantAcompte) > 0 && <tr><td colspan="3" className="px-4 py-2 text-right text-sm text-gray-600">Acompte versé</td><td className="px-4 py-2 text-right text-sm text-emerald-600 font-medium">-{safeFormat(reservation.montantAcompte, 2)}€</td></tr>}
-                {toNumber(reservation.montantRestantDu) > 0 && <tr><td colspan="3" className="px-4 py-2 text-right text-sm font-semibold text-rose-600">Restant dû</td><td className="px-4 py-2 text-right text-sm font-bold text-rose-600">{safeFormat(reservation.montantRestantDu, 2)}€</td></tr>}
-              </tfoot>
-            </table>
-          </div>
-          <div className="flex justify-between items-center pt-4 border-t border-gray-200">
-            <div className="flex items-center gap-3">
-              <Palmtree size={20} className="text-emerald-600/60" />
-              <div className="text-xs text-gray-500"><p>Facture générée automatiquement</p><p>Merci de votre confiance</p></div>
-            </div>
-            <button onClick={handleExportPDF} disabled={isExporting} className="flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white rounded-xl hover:bg-emerald-700 transition-all duration-200 hover:scale-[1.02] shadow-lg disabled:opacity-50 disabled:cursor-not-allowed">
-              {isExporting ? <><Loader2 size={16} className="animate-spin" /> Génération...</> : <><Download size={16} /> Exporter PDF</>}
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-};
-
-// ============================================
 // PAGE PRINCIPALE
 // ============================================
 
@@ -642,7 +280,6 @@ export default function ReservationsPage() {
   const [statut, setStatut] = useState<StatutReservation | ''>('');
   const [selectedReservation, setSelectedReservation] = useState<Reservation | null>(null);
   const [showDetails, setShowDetails] = useState(false);
-  const [showFacture, setShowFacture] = useState(false);
   const [confirmAction, setConfirmAction] = useState<{ 
     id: number; 
     action: 'CONFIRMEE' | 'ANNULEE' | 'NO_SHOW' | 'SUPPRIMER'; 
@@ -650,7 +287,6 @@ export default function ReservationsPage() {
     montantPenalite?: number;
   } | null>(null);
 
-  // ✅ WebSocket
   const { isConnected, refreshChambres } = useWebSocketContext();
 
   // ============================================
@@ -773,7 +409,7 @@ export default function ReservationsPage() {
       }
     } catch (error) {
       console.error('Erreur loadReservations:', error);
-      toast.error('Erreur lors du chargement des réservations');
+      notifyAjout('error', 'Erreur', 'Erreur lors du chargement des réservations');
       setReservations([]);
     } finally {
       setLoading(false);
@@ -837,17 +473,15 @@ export default function ReservationsPage() {
     try {
       const response = await reservationService.update(id, { statut: 'CONFIRMEE' });
       if (response?.success) {
-        toast.success('✅ Réservation confirmée avec succès');
+        notifyAjout('success', 'Réservation confirmée', 'La réservation a été confirmée avec succès');
         loadReservations();
-        
-        // 🔔 RAFRAÎCHIR LES CHAMBRES VIA WEBSOCKET
         refreshChambres();
         try { localStorage.removeItem('chambres_cache'); } catch (e) { /* ignore */ }
       } else {
-        toast.error(response?.message || 'Erreur lors de la confirmation');
+        notifyAjout('error', 'Erreur', response?.message || 'Erreur lors de la confirmation');
       }
     } catch (error: any) {
-      toast.error(error.response?.data?.message || 'Erreur lors de la confirmation');
+      notifyAjout('error', 'Erreur', error.response?.data?.message || 'Erreur lors de la confirmation');
     }
     setConfirmAction(null);
   };
@@ -861,20 +495,18 @@ export default function ReservationsPage() {
       if (response?.success) {
         const penalite = toNumber(response.data?.penalite);
         if (penalite > 0) {
-          toast.success(`❌ Réservation annulée - Pénalité: ${safeFormat(penalite, 2)}€`);
+          notifyAjout('success', 'Réservation annulée', `Pénalité: ${safeFormat(penalite, 2)}€`);
         } else {
-          toast.success('❌ Réservation annulée (gratuit)');
+          notifyAjout('success', 'Réservation annulée', 'Annulation gratuite');
         }
         loadReservations();
-        
-        // 🔔 RAFRAÎCHIR LES CHAMBRES VIA WEBSOCKET
         refreshChambres();
         try { localStorage.removeItem('chambres_cache'); } catch (e) { /* ignore */ }
       } else {
-        toast.error(response?.message || 'Erreur lors de l\'annulation');
+        notifyAjout('error', 'Erreur', response?.message || 'Erreur lors de l\'annulation');
       }
     } catch (error: any) {
-      toast.error(error.response?.data?.message || 'Erreur lors de l\'annulation');
+      notifyAjout('error', 'Erreur', error.response?.data?.message || 'Erreur lors de l\'annulation');
     }
     setConfirmAction(null);
   };
@@ -883,17 +515,15 @@ export default function ReservationsPage() {
     try {
       const response = await reservationService.delete(id);
       if (response?.success) {
-        toast.success('🗑️ Réservation supprimée définitivement');
+        notifyAjout('success', 'Réservation supprimée', 'La réservation a été supprimée définitivement');
         loadReservations();
-        
-        // 🔔 RAFRAÎCHIR LES CHAMBRES VIA WEBSOCKET
         refreshChambres();
         try { localStorage.removeItem('chambres_cache'); } catch (e) { /* ignore */ }
       } else {
-        toast.error(response?.message || 'Erreur lors de la suppression');
+        notifyAjout('error', 'Erreur', response?.message || 'Erreur lors de la suppression');
       }
     } catch (error: any) {
-      toast.error(error.response?.data?.message || 'Erreur lors de la suppression');
+      notifyAjout('error', 'Erreur', error.response?.data?.message || 'Erreur lors de la suppression');
     }
     setConfirmAction(null);
   };
@@ -961,35 +591,14 @@ export default function ReservationsPage() {
     montantTotal: reservations.reduce((sum, r) => sum + toNumber(r.montantTotal), 0)
   };
 
-  // ============================================
-  // EFFET
-  // ============================================
-
   useEffect(() => {
     loadReservations();
   }, [loadReservations]);
-
-  // ============================================
-  // GESTIONNAIRES D'OUVERTURE DE MODALES
-  // ============================================
 
   const openDetails = (reservation: Reservation) => {
     setSelectedReservation(reservation);
     setShowDetails(true);
   };
-
-  const openFacture = (reservation: Reservation) => {
-    setSelectedReservation(reservation);
-    setShowFacture(true);
-  };
-
-  const closeFacture = () => {
-    setShowFacture(false);
-  };
-
-  // ============================================
-  // RENDU
-  // ============================================
 
   const chambresSelectionnees = getReservationChambres(selectedReservation);
   const chambrePrincipale = chambresSelectionnees[0] || selectedReservation?.chambre || null;
@@ -1167,16 +776,6 @@ export default function ReservationsPage() {
                             <Trash2 size={16} className="text-rose-700" />
                           </button>
                         )}
-                        <button 
-                          onClick={(e) => { 
-                            e.stopPropagation(); 
-                            openFacture(r); 
-                          }} 
-                          className="p-1.5 bg-sky-100 hover:bg-sky-200 rounded-lg transition-all duration-200 hover:scale-110" 
-                          title="Voir la facture"
-                        >
-                          <FileText size={16} className="text-sky-700" />
-                        </button>
                         <button onClick={(e) => { e.stopPropagation(); navigate(`/reservations/${r.id}`); }} className="p-1.5 bg-violet-100 hover:bg-violet-200 rounded-lg transition-all duration-200 hover:scale-110" title="Voir détails">
                           <Eye size={16} className="text-violet-700" />
                         </button>
@@ -1192,13 +791,6 @@ export default function ReservationsPage() {
 
       {/* Confirm Dialog */}
       <ConfirmDialog isOpen={!!confirmAction} title={confirmAction?.action === 'SUPPRIMER' ? '🗑️ Suppression définitive' : confirmAction?.action === 'ANNULEE' ? '❌ Annulation' : '✅ Confirmation'} message={confirmAction?.label ?? ''} onConfirm={handleAction} onCancel={() => setConfirmAction(null)} variant={confirmAction?.action === 'ANNULEE' || confirmAction?.action === 'SUPPRIMER' ? 'danger' : 'default'} />
-
-      {/* Facture Modal */}
-      <FactureModal 
-        isOpen={showFacture} 
-        onClose={closeFacture} 
-        reservation={selectedReservation} 
-      />
 
       {/* Modal Détails Réservation */}
       {showDetails && selectedReservation && (
@@ -1483,17 +1075,6 @@ export default function ReservationsPage() {
               <button onClick={() => { setShowDetails(false); setSelectedReservation(null); }} className="px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100 rounded-xl border border-gray-300 transition-all duration-200">
                 Fermer
               </button>
-              <button 
-                onClick={() => { 
-                  setShowDetails(false); 
-                  setTimeout(() => {
-                    openFacture(selectedReservation);
-                  }, 100);
-                }} 
-                className="px-4 py-2 text-sm font-medium text-white bg-sky-600 hover:bg-sky-700 rounded-xl flex items-center gap-2 transition-all duration-200 hover:scale-[1.02] shadow-lg"
-              >
-                <FileText size={16} /> Facture
-              </button>
               <button onClick={() => { navigate(`/reservations/${selectedReservation.id}`); }} className="px-4 py-2 text-sm font-medium text-white bg-emerald-600 hover:bg-emerald-700 rounded-xl flex items-center gap-2 transition-all duration-200 hover:scale-[1.02] shadow-lg">
                 <Eye size={16} /> Modifier
               </button>
@@ -1502,7 +1083,6 @@ export default function ReservationsPage() {
         </div>
       )}
 
-      {/* Styles d'animation */}
       <style>{`
         @keyframes fadeIn {
           from { opacity: 0; }

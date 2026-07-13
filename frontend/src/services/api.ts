@@ -2,6 +2,11 @@
 import axios from 'axios';
 import toast from 'react-hot-toast';
 import type { CommunicationStats as SharedCommunicationStats, MessageEmail as SharedMessageEmail, ModeleMessage as SharedModeleMessage, StatutEnvoi as SharedStatutEnvoi, TypeMessage as SharedTypeMessage } from '../types';
+import { notifyAjout } from '../components/ui/AjoutNotification';
+
+// ============================================
+// Configuration Axios
+// ============================================
 
 const api = axios.create({
   baseURL: '/api',
@@ -29,14 +34,14 @@ api.interceptors.response.use(
     });
     
     if (error.response?.status === 401) {
-      toast.error('Session expirée. Veuillez vous reconnecter.');
+      notifyAjout('error', 'Session expirée', 'Veuillez vous reconnecter.');
       localStorage.removeItem('palmiers_token');
       localStorage.removeItem('palmiers_user');
       window.location.href = '/login';
     } else if (error.response?.status === 403) {
-      toast.error('Accès refusé — permissions insuffisantes');
+      notifyAjout('error', 'Accès refusé', 'Permissions insuffisantes');
     } else if (error.response?.status >= 500) {
-      toast.error('Erreur serveur. Veuillez réessayer.');
+      notifyAjout('error', 'Erreur serveur', 'Veuillez réessayer plus tard');
     }
     return Promise.reject(error);
   }
@@ -61,16 +66,25 @@ export type CommunicationStats = SharedCommunicationStats & {
 // ============================================
 
 export const chambreService = {
+  /**
+   * Récupérer toutes les chambres
+   */
   async getAll() {
     const response = await api.get('/chambres');
     return response.data;
   },
 
+  /**
+   * Récupérer les chambres avec occupation en temps réel
+   */
   async getAvecOccupation() {
     const response = await api.get('/chambres/avec-occupation');
     return response.data;
   },
 
+  /**
+   * Récupérer les chambres disponibles sur une période
+   */
   async getDisponibles(dateArrivee: string, dateDepart: string, capacite?: number) {
     const response = await api.get('/chambres/disponibles', {
       params: { dateArrivee, dateDepart, capacite }
@@ -78,6 +92,9 @@ export const chambreService = {
     return response.data;
   },
 
+  /**
+   * Récupérer le calendrier d'occupation
+   */
   async getCalendrier(mois: number, annee: number) {
     const response = await api.get('/chambres/calendrier', {
       params: { mois, annee }
@@ -85,61 +102,97 @@ export const chambreService = {
     return response.data;
   },
 
+  /**
+   * Récupérer une chambre par son ID
+   */
   async getById(id: number) {
     const response = await api.get(`/chambres/${id}`);
     return response.data;
   },
 
+  /**
+   * Créer une nouvelle chambre
+   */
   async create(data: any) {
     const response = await api.post('/chambres', data);
     return response.data;
   },
 
+  /**
+   * Mettre à jour une chambre
+   */
   async update(id: number, data: any) {
     const response = await api.put(`/chambres/${id}`, data);
     return response.data;
   },
 
+  /**
+   * Supprimer une chambre
+   */
   async delete(id: number) {
     const response = await api.delete(`/chambres/${id}`);
     return response.data;
   },
 
+  /**
+   * Mettre à jour le statut d'une chambre
+   */
   async updateStatut(id: number, statut: string) {
     const response = await api.patch(`/chambres/${id}/statut`, { statut });
     return response.data;
   },
 
+  /**
+   * Bloquer des dates pour une chambre
+   */
   async bloquerDates(id: number, data: { dateDebut: string; dateFin: string; motif: string; type: string }) {
     const response = await api.post(`/chambres/${id}/bloquer`, data);
     return response.data;
   },
 
+  /**
+   * Débloquer des dates pour une chambre
+   */
   async debloquerDates(id: number, blocageId: number) {
     const response = await api.delete(`/chambres/${id}/bloquer/${blocageId}`);
     return response.data;
   },
 
+  /**
+   * Récupérer les tarifs d'une chambre
+   */
   async getTarifs(id: number) {
     const response = await api.get(`/chambres/${id}/tarifs`);
     return response.data;
   },
 
+  /**
+   * Mettre à jour les tarifs d'une chambre
+   */
   async updateTarifs(id: number, tarifs: any[]) {
     const response = await api.put(`/chambres/${id}/tarifs`, { tarifs });
     return response.data;
   },
 
+  /**
+   * Récupérer l'historique des modifications d'une chambre
+   */
   async getHistorique(id: number) {
     const response = await api.get(`/chambres/${id}/historique`);
     return response.data;
   },
 
+  /**
+   * Récupérer les réservations futures d'une chambre
+   */
   async getReservationsFutures(id: number) {
     const response = await api.get(`/chambres/${id}/reservations-futures`);
     return response.data;
   },
 
+  /**
+   * Récupérer les arrivées et départs du jour
+   */
   async getArriveesDepartsJour() {
     const response = await api.get('/chambres/arrivees-departs-jour');
     return response.data;
@@ -147,40 +200,61 @@ export const chambreService = {
 };
 
 // ============================================
-// SERVICES - RÉSERVATIONS (avec rafraîchissement notifications)
+// SERVICES - RÉSERVATIONS
 // ============================================
 
 export const reservationService = {
+  /**
+   * Récupérer toutes les réservations avec filtres
+   */
   async getAll(filters?: { statut?: string; dateDebut?: string; dateFin?: string; search?: string; include?: string[] }) {
     const response = await api.get('/reservations', { params: filters });
     return response.data;
   },
 
+  /**
+   * Récupérer les arrivées du jour
+   */
   async getArriveesJour() {
     const response = await api.get('/reservations/arrivees-jour');
     return response.data;
   },
 
+  /**
+   * Récupérer les départs du jour
+   */
   async getDepartsJour() {
     const response = await api.get('/reservations/departs-jour');
     return response.data;
   },
 
+  /**
+   * Récupérer les prochaines réservations (7 jours)
+   */
   async getProchains7Jours() {
     const response = await api.get('/reservations/prochains-7-jours');
     return response.data;
   },
 
+  /**
+   * Récupérer une réservation par son ID
+   */
   async getById(id: number) {
     const response = await api.get(`/reservations/${id}`);
     return response.data;
   },
 
+  /**
+   * Calculer le tarif d'une réservation
+   */
   async calculer(data: any) {
     const response = await api.post('/reservations/calculer', data);
     return response.data;
   },
 
+  /**
+   * Créer une nouvelle réservation
+   */
   async create(data: any) {
     const response = await api.post('/reservations', data);
     // ✅ Rafraîchir les notifications après création
@@ -194,6 +268,9 @@ export const reservationService = {
     return response.data;
   },
 
+  /**
+   * Mettre à jour une réservation
+   */
   async update(id: number, data: any) {
     const response = await api.put(`/reservations/${id}`, data);
     // ✅ Rafraîchir les notifications après modification
@@ -207,6 +284,9 @@ export const reservationService = {
     return response.data;
   },
 
+  /**
+   * Annuler une réservation
+   */
   async cancel(id: number, motif?: string) {
     const response = await api.delete(`/reservations/${id}/annuler`, { data: { motif } });
     // ✅ Rafraîchir les notifications après annulation
@@ -220,6 +300,9 @@ export const reservationService = {
     return response.data;
   },
 
+  /**
+   * Supprimer définitivement une réservation
+   */
   async delete(id: number) {
     const response = await api.delete(`/reservations/${id}/supprimer`);
     // ✅ Rafraîchir les notifications après suppression
@@ -233,11 +316,17 @@ export const reservationService = {
     return response.data;
   },
 
+  /**
+   * Récupérer les statistiques d'occupation
+   */
   async getStatsOccupation(mois?: number, annee?: number) {
     const response = await api.get('/reservations/stats/occupation', { params: { mois, annee } });
     return response.data;
   },
 
+  /**
+   * Récupérer le taux d'occupation
+   */
   async getTauxOccupation(dateDebut?: string, dateFin?: string) {
     const response = await api.get('/reservations/stats/taux-occupation', { params: { dateDebut, dateFin } });
     return response.data;
@@ -249,12 +338,17 @@ export const reservationService = {
 // ============================================
 
 export const clientService = {
+  /**
+   * Récupérer tous les clients avec pagination et recherche
+   */
   async getAll(params?: { page?: number; limit?: number; search?: string }) {
     const response = await api.get('/clients', { params });
     return response.data;
   },
 
-  // ✅ CORRECTION: Validation de l'ID avant appel API
+  /**
+   * Récupérer un client par son ID (avec validation)
+   */
   async getById(id: number | string) {
     // Convertir l'ID en nombre
     const numericId = typeof id === 'string' ? parseInt(id, 10) : id;
@@ -270,22 +364,33 @@ export const clientService = {
     return response.data;
   },
 
+  /**
+   * Créer un nouveau client
+   */
   async create(data: any) {
     const response = await api.post('/clients', data);
     return response.data;
   },
 
+  /**
+   * Mettre à jour un client
+   */
   async update(id: number, data: any) {
     const response = await api.put(`/clients/${id}`, data);
     return response.data;
   },
 
+  /**
+   * Supprimer un client
+   */
   async delete(id: number) {
     const response = await api.delete(`/clients/${id}`);
     return response.data;
   },
 
-  // ✅ CORRECTION: Gestion des recherches vides
+  /**
+   * Rechercher des clients (avec validation)
+   */
   async search(query: string) {
     // Si la requête est vide ou trop courte, retourner un tableau vide
     if (!query || query.trim().length < 2) {
@@ -301,21 +406,33 @@ export const clientService = {
 // ============================================
 
 export const paiementService = {
+  /**
+   * Récupérer tous les paiements
+   */
   async getAll(params?: { reservationId?: number; statut?: string }) {
     const response = await api.get('/paiements', { params });
     return response.data;
   },
 
+  /**
+   * Récupérer un paiement par son ID
+   */
   async getById(id: number) {
     const response = await api.get(`/paiements/${id}`);
     return response.data;
   },
 
+  /**
+   * Récupérer les paiements d'une réservation
+   */
   async getByReservation(reservationId: number) {
     const response = await api.get(`/paiements/reservation/${reservationId}`);
     return response.data;
   },
 
+  /**
+   * Récupérer la trésorerie
+   */
   async getTresorerie(mois?: number, annee?: number) {
     const params = new URLSearchParams();
     if (mois) params.append('mois', String(mois));
@@ -324,22 +441,33 @@ export const paiementService = {
     return response.data;
   },
 
+  /**
+   * Récupérer les paiements impayés
+   */
   async getImpayes() {
     const response = await api.get('/paiements/impayes');
     return response.data;
   },
 
+  /**
+   * Générer une facture
+   */
   async generateFacture(reservationId: number) {
     const response = await api.post(`/paiements/${reservationId}/facture`);
     return response.data;
   },
 
+  /**
+   * Alerter les impayés
+   */
   async alerterImpayes() {
     const response = await api.post('/paiements/alerter-impayes');
     return response.data;
   },
 
-  // ✅ CORRECTION: Ajout des champs spécifiques pour chaque mode de paiement
+  /**
+   * Créer un paiement (avec champs spécifiques)
+   */
   async create(data: {
     reservationId: number;
     montant: number;
@@ -365,6 +493,9 @@ export const paiementService = {
     return response.data;
   },
 
+  /**
+   * Envoyer une relance
+   */
   async envoyerRelance(reservationId: number) {
     const response = await api.post(`/paiements/${reservationId}/relance`);
     return response.data;
@@ -376,16 +507,25 @@ export const paiementService = {
 // ============================================
 
 export const authService = {
+  /**
+   * Connexion
+   */
   async login(email: string, password: string) {
     const response = await api.post('/auth/login', { email, password });
     return response.data;
   },
 
+  /**
+   * Déconnexion
+   */
   async logout() {
     const response = await api.post('/auth/logout');
     return response.data;
   },
 
+  /**
+   * Récupérer l'utilisateur courant
+   */
   async getMe() {
     const response = await api.get('/auth/me');
     return response.data;

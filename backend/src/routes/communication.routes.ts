@@ -39,4 +39,6 @@ router.get('/stats', authenticate, communicationController.getStats.bind(communi
 router.post('/relances', authenticate, communicationController.envoyerRelanceGroupe.bind(communicationController));
 router.post('/clients/:clientId/relance', authenticate, communicationController.envoyerRelance.bind(communicationController));
 
+router.get('/test-email', authenticate, communicationController.testerEmail.bind(communicationController));
+
 export default router;

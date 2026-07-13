@@ -1,9 +1,11 @@
+// frontend/src/pages/ChambresPage.tsx
 import React, { useEffect, useState, useRef, useCallback } from 'react';
 import toast from 'react-hot-toast';
 import api from '../services/api';
 import { Modal } from '../components/ui';
 import { formatEuro } from '../utils/helpers';
 import { useWebSocketContext } from '../context/WebSocketContext';
+import { notifyAjout } from '../components/ui/AjoutNotification';
 import {
   BedDouble, Plus, Edit2, Ban, CheckCircle, Wifi, Wind,
   Accessibility, Coffee, Search, X, Calendar,
@@ -301,9 +303,9 @@ function validatePromoCode(code: string): boolean {
 async function copyToClipboard(text: string) {
   try {
     await navigator.clipboard.writeText(text);
-    toast.success(`📋 "${text}" copié`);
+    notifyAjout('success', 'Copié', `"${text}" copié dans le presse-papiers`);
   } catch {
-    toast.error('Impossible de copier');
+    notifyAjout('error', 'Erreur', 'Impossible de copier');
   }
 }
 
@@ -684,7 +686,7 @@ const ChambreCard = ({
                             key={s}
                             onClick={() => {
                               if (estOccupee && s === 'DISPONIBLE') {
-                                toast.error('Impossible de marquer disponible une chambre occupée');
+                                notifyAjout('error', 'Action impossible', 'Impossible de marquer disponible une chambre occupée');
                                 return;
                               }
                               onToggleStatut(chambre, s);
@@ -1293,14 +1295,14 @@ const CodePromoModal = ({ isOpen, onClose, onSave, saving }: {
   const handleGenerateCode = () => {
     const newCode = generateRandomCode();
     setForm(f => ({ ...f, code: newCode }));
-    toast.success('🔑 Nouveau code généré !');
+    notifyAjout('success', 'Code généré', `🔑 Nouveau code généré !`);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
     if (!validatePromoCode(form.code)) {
-      toast.error('Le code doit contenir 1 à 6 caractères (majuscules et chiffres uniquement)');
+      notifyAjout('error', 'Code invalide', 'Le code doit contenir 1 à 6 caractères (majuscules et chiffres uniquement)');
       return;
     }
 
@@ -1630,10 +1632,10 @@ const GestionPromosModal = ({
     setBusyId(promo.id);
     try {
       await api.patch(`/codes-promo/${promo.id}/toggle`);
-      toast.success(promo.actif ? `⏸️ ${promo.code} désactivé` : `▶️ ${promo.code} activé`);
+      notifyAjout('success', promo.actif ? 'Code désactivé' : 'Code activé', `${promo.code} ${promo.actif ? 'désactivé' : 'activé'}`);
       load();
     } catch (e: any) {
-      toast.error(e.response?.data?.message || 'Erreur');
+      notifyAjout('error', 'Erreur', e.response?.data?.message || 'Erreur');
     } finally {
       setBusyId(null);
     }
@@ -1644,10 +1646,10 @@ const GestionPromosModal = ({
     setBusyId(promo.id);
     try {
       await api.delete(`/codes-promo/${promo.id}`);
-      toast.success(`🗑️ Code ${promo.code} supprimé`);
+      notifyAjout('success', 'Code supprimé', `Code ${promo.code} supprimé`);
       load();
     } catch (e: any) {
-      toast.error(e.response?.data?.message || 'Erreur');
+      notifyAjout('error', 'Erreur', e.response?.data?.message || 'Erreur');
     } finally {
       setBusyId(null);
     }
@@ -1881,14 +1883,13 @@ export default function ChambresPage() {
           setStatistiques(cached.statistiques);
           setLoading(false);
           setIsRefreshing(false);
-          // ✅ Même avec le cache, on rafraîchit en tâche de fond via websocket-ready fetch
           fetchFreshData();
           return;
         }
       }
       await fetchFreshData();
     } catch {
-      toast.error('Impossible de charger les chambres');
+      notifyAjout('error', 'Erreur', 'Impossible de charger les chambres');
       const cached = getCache();
       if (cached) {
         setChambres(cached.chambres);
@@ -1947,76 +1948,127 @@ export default function ChambresPage() {
 
   const handleAddChambre = async (data: any) => {
     setSaving(true);
-    try { await api.post('/chambres', data); toast.success('✅ Chambre ajoutée'); clearCache(); await fetchChambres(true); setShowFormModal(false); }
-    catch (e: any) { toast.error(e.response?.data?.message || 'Erreur'); }
-    finally { setSaving(false); }
+    try {
+      await api.post('/chambres', data);
+      notifyAjout('success', 'Chambre ajoutée', '✅ Nouvelle chambre créée avec succès');
+      clearCache();
+      await fetchChambres(true);
+      setShowFormModal(false);
+    } catch (e: any) {
+      notifyAjout('error', 'Erreur', e.response?.data?.message || 'Erreur lors de la création');
+    } finally {
+      setSaving(false);
+    }
   };
 
   const handleEditChambre = async (data: any) => {
     if (!selectedChambre) return;
     setSaving(true);
-    try { await api.put(`/chambres/${selectedChambre.id}`, data); toast.success('✅ Chambre modifiée'); clearCache(); await fetchChambres(true); setShowFormModal(false); setSelectedChambre(null); }
-    catch (e: any) { toast.error(e.response?.data?.message || 'Erreur'); }
-    finally { setSaving(false); }
+    try {
+      await api.put(`/chambres/${selectedChambre.id}`, data);
+      notifyAjout('success', 'Chambre modifiée', `✅ ${selectedChambre.nom} a été mise à jour`);
+      clearCache();
+      await fetchChambres(true);
+      setShowFormModal(false);
+      setSelectedChambre(null);
+    } catch (e: any) {
+      notifyAjout('error', 'Erreur', e.response?.data?.message || 'Erreur lors de la modification');
+    } finally {
+      setSaving(false);
+    }
   };
 
   const handleDeleteChambre = async (chambre: Chambre) => {
-    if (getStatutAffichage(chambre, reservationsActuelles) === 'OCCUPEE') { toast.error('Impossible de supprimer une chambre occupée'); return; }
+    if (getStatutAffichage(chambre, reservationsActuelles) === 'OCCUPEE') {
+      notifyAjout('error', 'Action impossible', 'Impossible de supprimer une chambre occupée');
+      return;
+    }
     if (!confirm(`Supprimer "${chambre.nom}" ?`)) return;
-    try { await api.delete(`/chambres/${chambre.id}`); toast.success('🗑️ Chambre supprimée'); clearCache(); await fetchChambres(true); }
-    catch (e: any) { toast.error(e.response?.data?.message || 'Erreur'); }
+    try {
+      await api.delete(`/chambres/${chambre.id}`);
+      notifyAjout('success', 'Chambre supprimée', `🗑️ ${chambre.nom} a été supprimée`);
+      clearCache();
+      await fetchChambres(true);
+    } catch (e: any) {
+      notifyAjout('error', 'Erreur', e.response?.data?.message || 'Erreur lors de la suppression');
+    }
   };
 
   const handleDuplicateChambre = async (chambre: Chambre) => {
     try {
       const { id, createdAt, updatedAt, ...data } = chambre as any;
       await api.post('/chambres', { ...data, nom: `${chambre.nom} (copie)`, numero: `${chambre.numero}-COPY` });
-      toast.success('📋 Chambre dupliquée'); clearCache(); await fetchChambres(true);
-    } catch (e: any) { toast.error(e.response?.data?.message || 'Erreur'); }
+      notifyAjout('success', 'Chambre dupliquée', `📋 ${chambre.nom} a été dupliquée`);
+      clearCache();
+      await fetchChambres(true);
+    } catch (e: any) {
+      notifyAjout('error', 'Erreur', e.response?.data?.message || 'Erreur lors de la duplication');
+    }
   };
 
   const handleToggleStatut = async (chambre: Chambre, newStatut: StatutChambre) => {
     if (newStatut === 'DISPONIBLE' && getStatutAffichage(chambre, reservationsActuelles) === 'OCCUPEE') {
-      toast.error('Impossible de marquer disponible une chambre occupée');
+      notifyAjout('error', 'Action impossible', 'Impossible de marquer disponible une chambre occupée');
       return;
     }
     try {
       await api.patch(`/chambres/${chambre.id}/statut`, { statut: newStatut });
-      toast.success(`✅ Statut → ${STATUT_CONFIG[newStatut].label}`);
-      clearCache(); await fetchChambres(true);
-    } catch (e: any) { toast.error(e.response?.data?.message || 'Erreur'); }
+      notifyAjout('success', 'Statut modifié', `✅ ${chambre.nom} → ${STATUT_CONFIG[newStatut].label}`);
+      clearCache();
+      await fetchChambres(true);
+    } catch (e: any) {
+      notifyAjout('error', 'Erreur', e.response?.data?.message || 'Erreur lors du changement de statut');
+    }
   };
 
   const handleBlocage = async (data: { dateDebut: string; dateFin: string; motif: string; type: string }) => {
     if (!selectedChambre) return;
     if (!estChambreDisponible(selectedChambre, new Date(data.dateDebut), new Date(data.dateFin), reservationsActuelles, [])) {
-      toast.error('Chambre non disponible sur cette période'); return;
+      notifyAjout('error', 'Action impossible', 'Chambre non disponible sur cette période');
+      return;
     }
     setSaving(true);
-    try { await api.post(`/chambres/${selectedChambre.id}/bloquer`, data); toast.success('🔒 Dates bloquées'); clearCache(); await fetchChambres(true); setShowBlocageModal(false); setSelectedChambre(null); }
-    catch (e: any) { toast.error(e.response?.data?.message || 'Erreur'); }
-    finally { setSaving(false); }
+    try {
+      await api.post(`/chambres/${selectedChambre.id}/bloquer`, data);
+      notifyAjout('success', 'Dates bloquées', `🔒 ${selectedChambre.nom} bloquée du ${fmtDate(data.dateDebut)} au ${fmtDate(data.dateFin)}`);
+      clearCache();
+      await fetchChambres(true);
+      setShowBlocageModal(false);
+      setSelectedChambre(null);
+    } catch (e: any) {
+      notifyAjout('error', 'Erreur', e.response?.data?.message || 'Erreur lors du blocage');
+    } finally {
+      setSaving(false);
+    }
   };
 
   const handleSaveTarifs = async (tarifs: any[]) => {
     if (!selectedChambre) return;
     setSaving(true);
-    try { await api.put(`/chambres/${selectedChambre.id}/tarifs`, { tarifs }); toast.success('💰 Tarifs mis à jour'); clearCache(); await fetchChambres(true); setShowTarifModal(false); }
-    catch (e: any) { toast.error(e.response?.data?.message || 'Erreur'); }
-    finally { setSaving(false); }
+    try {
+      await api.put(`/chambres/${selectedChambre.id}/tarifs`, { tarifs });
+      notifyAjout('success', 'Tarifs mis à jour', `💰 Les tarifs de ${selectedChambre.nom} ont été mis à jour`);
+      clearCache();
+      await fetchChambres(true);
+      setShowTarifModal(false);
+    } catch (e: any) {
+      notifyAjout('error', 'Erreur', e.response?.data?.message || 'Erreur lors de la mise à jour des tarifs');
+    } finally {
+      setSaving(false);
+    }
   };
 
   const handleCreateCodePromo = async (data: any) => {
     setSaving(true);
     try {
       await api.post('/codes-promo', data);
-      toast.success(`🎁 Code promo ${data.code} créé`);
+      notifyAjout('success', 'Code promo créé', `🎁 Code ${data.code} créé avec succès`);
       clearCache();
       await fetchChambres(true);
       setPromosRefreshSignal(s => s + 1);
       setShowCodePromoModal(false);
     } catch (e: any) {
-      toast.error(e.response?.data?.message || 'Erreur');
+      notifyAjout('error', 'Erreur', e.response?.data?.message || 'Erreur lors de la création');
     } finally {
       setSaving(false);
     }
@@ -2025,18 +2077,18 @@ export default function ChambresPage() {
   const handleApplyPromo = async (code: string) => {
     if (!selectedChambre) return;
     if (!validatePromoCode(code)) {
-      toast.error('Code invalide (1-6 caractères majuscules/chiffres)');
+      notifyAjout('error', 'Code invalide', 'Le code doit contenir 1 à 6 caractères (majuscules et chiffres)');
       return;
     }
     setSaving(true);
     try {
       await api.post(`/chambres/${selectedChambre.id}/appliquer-promo`, { code });
-      toast.success(`🎁 Code promo ${code} appliqué`);
+      notifyAjout('success', 'Code promo appliqué', `🎁 ${code} appliqué à ${selectedChambre.nom}`);
       clearCache();
       await fetchChambres(true);
       setShowApplyPromoModal(false);
     } catch (e: any) {
-      toast.error(e.response?.data?.message || 'Erreur');
+      notifyAjout('error', 'Erreur', e.response?.data?.message || 'Erreur lors de l\'application');
     } finally {
       setSaving(false);
     }

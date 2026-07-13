@@ -5,6 +5,7 @@ import toast from 'react-hot-toast';
 import api, { clientService } from '../services/api';
 import { formatEuro, nombreNuits, canalAcquisitionLabel } from '../utils/helpers';
 import { useWebSocketContext } from '../context/WebSocketContext';
+import { notifyAjout } from '../components/ui/AjoutNotification';
 import { 
   Calculator, AlertCircle, Save, ArrowLeft, Users, User, BedDouble, 
   Calendar, Check, Loader2, Sparkles, Bike, Sun, Cloud, Snowflake,
@@ -404,24 +405,22 @@ export default function NouvelleReservationPage() {
           setLoadingReservation(true);
           const res = await api.get(`/reservations/${id}`);
           const r = res.data.data ?? res.data;
-          
+
           let clientId = null;
-          
+
           if (r.clientId) {
             clientId = typeof r.clientId === 'string' ? parseInt(r.clientId, 10) : r.clientId;
           } else if (r.client_id) {
             clientId = typeof r.client_id === 'string' ? parseInt(r.client_id, 10) : r.client_id;
           } else if (r.client?.id) {
             clientId = typeof r.client.id === 'string' ? parseInt(r.client.id, 10) : r.client.id;
-          } else if (r.client && typeof r.client === 'object' && r.client.id) {
-            clientId = typeof r.client.id === 'string' ? parseInt(r.client.id, 10) : r.client.id;
           }
-          
+
           let clientComplet: ClientComplet | null = null;
           if (clientId && !isNaN(clientId) && clientId > 0) {
             clientComplet = await fetchClientComplet(clientId);
           } else {
-            if (r.client_prenom || r.client_nom || r.prenom || r.nom) {
+            if (r.client_prenom || r.client_nom || r.prenom || r.nom || r.client?.prenom) {
               clientComplet = {
                 id: clientId || 0,
                 civilite: r.client_civilite || r.civilite || r.client?.civilite || '',
@@ -455,7 +454,14 @@ export default function NouvelleReservationPage() {
               console.warn('Impossible de récupérer les détails de la chambre', e);
             }
           }
-          
+
+          const demandesSpecialesFetched =
+            r.demandesSpeciales || r.demandeSpeciale || r.demandes_speciales || '';
+          const horaireFetched =
+            r.horaireArriveeTardive || r.heureArriveePrevisionnelle || r.horaire_arrivee_tardive || '';
+          const commentaireFetched =
+            r.commentaire || r.notesInternes || r.notes || '';
+
           const formData = {
             clientId: String(clientId || ''),
             chambreId: String(r.chambreId ?? r.chambre_id ?? chambreInfo?.id ?? r.chambre?.id ?? ''),
@@ -463,15 +469,15 @@ export default function NouvelleReservationPage() {
             dateDepart: r.dateDepart ? r.dateDepart.slice(0, 10) : '',
             nbAdultes: String(r.nbAdultes ?? r.nb_adultes ?? 1),
             nbEnfants: String(r.nbEnfants ?? r.nb_enfants ?? 0),
-            nbPersonnes: String((r.nbPersonnes ?? r.nb_personnes ?? (r.nbAdultes + r.nbEnfants)) ?? 1),
+            nbPersonnes: String((r.nbPersonnes ?? r.nb_personnes ?? ((r.nbAdultes || 1) + (r.nbEnfants || 0))) ?? 1),
             canalAcquisition: r.canalAcquisition ?? r.canal_acquisition ?? 'DIRECT',
-            commentaire: r.commentaire ?? r.notesInternes ?? r.notes ?? '',
-            petitDejeuner: r.petitDejeuner ?? r.petit_dejeuner ?? false,
+            commentaire: commentaireFetched,
+            petitDejeuner: r.petitDejeunerInclus ?? r.petit_dejeuner ?? false,
             groupe: r.groupe ?? false,
             nbVelos: String(r.nbVelos ?? r.nb_velos ?? 0),
-            demandesSpeciales: r.demandesSpeciales ?? r.demandes_speciales ?? '',
+            demandesSpeciales: demandesSpecialesFetched,
             litBebe: r.litBebe ?? r.lit_bebe ?? false,
-            horaireArriveeTardive: r.horaireArriveeTardive ?? r.horaire_arrivee_tardive ?? '',
+            horaireArriveeTardive: horaireFetched ? String(horaireFetched).slice(0, 5) : '',
             codePromo: r.codePromo || r.code_promo || '',
             typeAcompte: String(r.typeAcompte || 30),
           };
@@ -481,35 +487,23 @@ export default function NouvelleReservationPage() {
             
             let demandes = formData.demandesSpeciales || '';
             
-            if (clientComplet.allergies) {
-              const allergyText = `Allergies: ${clientComplet.allergies}`;
-              if (!demandes.includes('Allergies:')) {
-                demandes += `${demandes ? ' | ' : ''}${allergyText}`;
-              }
+            if (clientComplet.allergies && !demandes.includes('Allergies:')) {
+              demandes += `${demandes ? ' | ' : ''}Allergies: ${clientComplet.allergies}`;
             }
             
-            if (clientComplet.regime_alimentaire) {
-              const regimeText = `Régime: ${clientComplet.regime_alimentaire}`;
-              if (!demandes.includes('Régime:')) {
-                demandes += `${demandes ? ' | ' : ''}${regimeText}`;
-              }
+            if (clientComplet.regime_alimentaire && !demandes.includes('Régime:')) {
+              demandes += `${demandes ? ' | ' : ''}Régime: ${clientComplet.regime_alimentaire}`;
             }
             
-            if (clientComplet.chambre_preferee) {
-              const chambreText = `Chambre préférée: ${clientComplet.chambre_preferee}`;
-              if (!demandes.includes('Chambre préférée:')) {
-                demandes += `${demandes ? ' | ' : ''}${chambreText}`;
-              }
+            if (clientComplet.chambre_preferee && !demandes.includes('Chambre préférée:')) {
+              demandes += `${demandes ? ' | ' : ''}Chambre préférée: ${clientComplet.chambre_preferee}`;
             }
             
             formData.demandesSpeciales = demandes;
             
             let commentaireFinal = formData.commentaire || '';
-            if (clientComplet.commentaire) {
-              const noteClient = `📝 Notes client: ${clientComplet.commentaire}`;
-              if (!commentaireFinal.includes('Notes client:')) {
-                commentaireFinal += `${commentaireFinal ? '\n---\n' : ''}${noteClient}`;
-              }
+            if (clientComplet.commentaire && !commentaireFinal.includes('Notes client:')) {
+              commentaireFinal += `${commentaireFinal ? '\n---\n' : ''}📝 Notes client: ${clientComplet.commentaire}`;
             }
             formData.commentaire = commentaireFinal;
             
@@ -539,20 +533,50 @@ export default function NouvelleReservationPage() {
               allergies: r.client_allergies || r.client?.allergies || r.allergies || '',
               regime_alimentaire: r.client_regime_alimentaire || r.client?.regime_alimentaire || r.regime_alimentaire || '',
               chambre_preferee: r.client_chambre_preferee || r.client?.chambre_preferee || r.chambre_preferee || '',
-              commentaire: r.client_commentaire || r.client?.commentaire || r.commentaire || r.notes || ''
+              commentaire: r.client_commentaire || r.client?.commentaire || commentaireFetched || ''
             });
             setClientSearch(`${clientPrenom} ${clientNom}`);
           }
 
           setForm(formData);
 
-          if (formData.chambreId && formData.dateArrivee && formData.dateDepart) {
-            setTimeout(() => simuler(), 500);
-          }
+          const nbNuitsCalc = formData.dateArrivee && formData.dateDepart
+            ? nombreNuits(formData.dateArrivee, formData.dateDepart)
+            : 0;
+
+          const montantTotalResa = Number(r.montantTotal) || 0;
+          const montantAcompteResa = Number(r.montantAcompte) || 0;
+          const montantRestantDuResa = Number(
+            r.montantRestantDu ?? Math.max(0, montantTotalResa - montantAcompteResa)
+          );
+          const pourcentageAcompteResa = Number(formData.typeAcompte) || 30;
+
+          setSimulation({
+            total: montantTotalResa,
+            montantTotal: montantTotalResa,
+            totalTTC: montantTotalResa,
+            totalHT: montantTotalResa,
+            montantTVA: 0,
+            taxeSejour: 0,
+            typeAcompte: formData.typeAcompte,
+            pourcentageAcompte: pourcentageAcompteResa,
+            montantAcompte: Math.round(montantAcompteResa * 100) / 100,
+            soldeRestant: Math.round(montantRestantDuResa * 100) / 100,
+            detail: {
+              nbNuits: nbNuitsCalc || 1,
+              saison: 'MOYENNE',
+              sousTotalHebergement: montantTotalResa,
+              prixNuitFinal: nbNuitsCalc > 0 ? montantTotalResa / nbNuitsCalc : montantTotalResa,
+              detailNuits: { semaine: nbNuitsCalc, weekend: 0 }
+            },
+            reservation: {
+              nbNuits: nbNuitsCalc || 1
+            }
+          });
         }
       } catch (error) {
         console.error('❌ Erreur chargement initial:', error);
-        toast.error('Erreur lors du chargement des données');
+        notifyAjout('error', 'Erreur', 'Erreur lors du chargement des données');
       } finally {
         setLoadingInit(false);
         setLoadingReservation(false);
@@ -631,12 +655,12 @@ export default function NouvelleReservationPage() {
         }));
         
         setClientSearch(`${clientComplet.prenom} ${clientComplet.nom}`);
-        toast.success(`👤 Client ${clientComplet.prenom} ${clientComplet.nom} sélectionné`);
+        notifyAjout('success', 'Client sélectionné', `${clientComplet.prenom} ${clientComplet.nom}`);
       } else {
         setSelectedClient(client);
         setForm(f => ({ ...f, clientId: String(client.id) }));
         setClientSearch(`${client.prenom} ${client.nom}`);
-        toast.warning('⚠️ Certaines données client sont incomplètes');
+        notifyAjout('error', 'Client incomplet', 'Certaines données client sont manquantes');
       }
     } catch (error) {
       console.error('❌ Erreur selectClient:', error);
@@ -690,7 +714,7 @@ export default function NouvelleReservationPage() {
         soldeRestant: Math.round(soldeRestant * 100) / 100,
       });
       setTimeout(() => setTotalAnimation(true), 100);
-      toast.success('Tarif calculé avec succès');
+      notifyAjout('success', 'Tarif calculé', 'Simulation effectuée avec succès');
     } catch (e: any) {
       console.error('❌ Erreur simulation:', e);
       setSimError(e.response?.data?.message || 'Erreur de simulation');
@@ -707,7 +731,6 @@ export default function NouvelleReservationPage() {
     
     if (!form.clientId || !form.chambreId || !form.dateArrivee || !form.dateDepart) {
       setError('Veuillez remplir tous les champs obligatoires');
-      toast.error('Veuillez remplir tous les champs obligatoires');
       const errorEl = document.getElementById('form-error');
       if (errorEl) {
         errorEl.classList.add('animate-shake');
@@ -750,7 +773,7 @@ export default function NouvelleReservationPage() {
 
       if (response.data.success) {
         setSuccess(true);
-        toast.success(isEdit ? '✅ Réservation modifiée avec succès' : '✅ Réservation créée avec succès');
+        notifyAjout('success', isEdit ? 'Réservation modifiée' : 'Réservation créée', isEdit ? 'Modifications enregistrées avec succès' : 'Nouvelle réservation enregistrée avec succès');
         
         refreshChambres();
         
@@ -764,14 +787,14 @@ export default function NouvelleReservationPage() {
           navigate('/reservations');
         }, 2000);
       } else {
-        toast.error(response.data.message || 'Erreur lors de l\'enregistrement');
         setError(response.data.message || 'Erreur lors de l\'enregistrement');
+        notifyAjout('error', 'Erreur', response.data.message || 'Erreur lors de l\'enregistrement');
       }
     } catch (e: any) {
       console.error('❌ Erreur création:', e);
       const errorMsg = e.response?.data?.message || 'Erreur lors de l\'enregistrement';
       setError(errorMsg);
-      toast.error(errorMsg);
+      notifyAjout('error', 'Erreur', errorMsg);
     } finally {
       setSaving(false);
     }
@@ -850,7 +873,7 @@ export default function NouvelleReservationPage() {
           </div>
           <div>
             <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Tarif</p>
-            <p className="font-medium text-gray-900">{formatEuro(simDetail.sousTotalHebergement || simDetail.prixNuitFinal * simDetail.nbNuits || simData.montantTotal || 0)}</p>
+            <p className="font-medium text-gray-900">{formatEuro(simData.totalTTC || simData.total || 0)}</p>
             <p className="text-xs text-gray-500">{nuits} nuit{nuits > 1 ? 's' : ''}</p>
           </div>
         </div>
@@ -1435,7 +1458,9 @@ export default function NouvelleReservationPage() {
                   ) : (
                     <>
                       <Calculator size={15} className="group-hover:rotate-12 transition-transform duration-300 flex-shrink-0" />
-                      <span className="inline-block min-w-[120px] text-center">Calculer le tarif</span>
+                      <span className="inline-block min-w-[120px] text-center">
+                        {isEdit ? 'Recalculer le tarif' : 'Calculer le tarif'}
+                      </span>
                     </>
                   )}
                 </button>
@@ -1460,7 +1485,7 @@ export default function NouvelleReservationPage() {
 
                     <div className="flex justify-between text-gray-700">
                       <span>Hébergement ({simData.reservation?.nbNuits || simDetail.nbNuits || 0} nuits)</span>
-                      <span className="text-gray-900">{formatEuro(simDetail.sousTotalHebergement || simDetail.prixNuitFinal * simDetail.nbNuits || 0)}</span>
+                      <span className="text-gray-900">{formatEuro(simDetail.sousTotalHebergement || (simDetail.prixNuitFinal * simDetail.nbNuits) || 0)}</span>
                     </div>
 
                     {simDetail.prixPetitDejeunerHT > 0 && (
@@ -1513,20 +1538,26 @@ export default function NouvelleReservationPage() {
 
                     <div className="border-t border-gray-200 pt-2 mt-2" />
 
-                    <div className="flex justify-between text-gray-500 text-xs">
-                      <span>Sous-total HT</span>
-                      <span>{formatEuro(simData.totalHT || 0)}</span>
-                    </div>
+                    {simData.totalHT !== undefined && (
+                      <div className="flex justify-between text-gray-500 text-xs">
+                        <span>Sous-total HT</span>
+                        <span>{formatEuro(simData.totalHT || 0)}</span>
+                      </div>
+                    )}
 
-                    <div className="flex justify-between text-gray-500 text-xs">
-                      <span>TVA ({simDetail.taxes?.tauxTVA || 5.5}%)</span>
-                      <span>{formatEuro(simData.montantTVA || 0)}</span>
-                    </div>
+                    {simData.montantTVA !== undefined && (
+                      <div className="flex justify-between text-gray-500 text-xs">
+                        <span>TVA ({simDetail.taxes?.tauxTVA || 5.5}%)</span>
+                        <span>{formatEuro(simData.montantTVA || 0)}</span>
+                      </div>
+                    )}
 
-                    <div className="flex justify-between text-gray-500 text-xs">
-                      <span>Taxe de séjour</span>
-                      <span>{formatEuro(simData.taxeSejour || 0)}</span>
-                    </div>
+                    {simData.taxeSejour !== undefined && (
+                      <div className="flex justify-between text-gray-500 text-xs">
+                        <span>Taxe de séjour</span>
+                        <span>{formatEuro(simData.taxeSejour || 0)}</span>
+                      </div>
+                    )}
 
                     <div className="border-t border-gray-300 border-dashed pt-2 mt-1" />
 

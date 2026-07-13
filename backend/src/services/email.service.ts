@@ -15,12 +15,12 @@ export class EmailService {
     const user = process.env.SMTP_USER;
     const pass = process.env.SMTP_PASS;
 
-    // ✅ Vérification des credentials
-    if (host && user && pass && user !== 'contact@lespalmiers-reunion.re' || pass) {
-      // ✅ Correction : on vérifie que les credentials ne sont pas ceux par défaut
-      const hasValidCreds = user && pass && 
-                           !user.includes('votre_email') && 
-                           !pass.includes('votre_mot_de_passe');
+    // ✅ Vérification des credentials (corrigée : condition simplifiée et
+    // comparaison insensible à la casse pour détecter les placeholders)
+    if (host && user && pass) {
+      const hasValidCreds = 
+                           !user.toLowerCase().includes('votre_email') && 
+                           !pass.toLowerCase().includes('votre_mot_de_passe');
       
       if (hasValidCreds) {
         this.transporter = nodemailer.createTransport({

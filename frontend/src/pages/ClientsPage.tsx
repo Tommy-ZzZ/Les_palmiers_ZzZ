@@ -13,6 +13,7 @@ import {
 import { formatDate, formatEuro, initiales } from '../utils/helpers';
 import api from '../services/api';
 import toast from 'react-hot-toast';
+import { notifyAjout } from '../components/ui/AjoutNotification';
 
 // ============================================
 // TYPES - Basés sur le diagramme de classes §3.3
@@ -362,7 +363,7 @@ export default function ClientsPage() {
       setTotal(res.data.pagination?.total ?? res.data.total ?? data.length ?? 0);
     } catch (err) {
       console.error('[ClientsPage] Erreur chargement', err);
-      toast.error('Erreur lors du chargement des clients');
+      notifyAjout('error', 'Erreur', 'Erreur lors du chargement des clients');
     } finally {
       setLoading(false);
       setTimeout(() => setMounted(true), 100);
@@ -440,17 +441,17 @@ export default function ClientsPage() {
 
       if (editClient) {
         await api.put(`/clients/${editClient.id}`, payload);
-        toast.success('Client mis à jour avec succès');
+        notifyAjout('success', 'Client modifié', `${editClient.prenom} ${editClient.nom} a été modifié avec succès`);
       } else {
         await api.post('/clients', payload);
-        toast.success('Client créé avec succès');
+        notifyAjout('success', 'Client créé', `${form.prenom} ${form.nom} a été créé avec succès`);
       }
       setShowModal(false);
       fetchClients();
     } catch (e: any) {
       const msg = e.response?.data?.message || 'Erreur lors de l\'enregistrement';
       setFormError(msg);
-      toast.error(msg);
+      notifyAjout('error', 'Erreur', msg);
     } finally {
       setSaving(false);
     }
@@ -458,13 +459,14 @@ export default function ClientsPage() {
 
   const handleDelete = async (id: number) => {
     try {
+      const client = clients.find(c => c.id === id);
       await api.delete(`/clients/${id}`);
-      toast.success('Client supprimé avec succès');
+      notifyAjout('success', 'Client supprimé', `${client?.prenom} ${client?.nom} a été supprimé avec succès`);
       setConfirmDelete(null);
       fetchClients();
     } catch (err: any) {
       const msg = err.response?.data?.message || 'Impossible de supprimer ce client';
-      toast.error(msg);
+      notifyAjout('error', 'Erreur', msg);
     }
   };
 
@@ -500,7 +502,7 @@ export default function ClientsPage() {
       });
     } catch (err) {
       console.error('Erreur chargement détail', err);
-      toast.error('Erreur lors du chargement des détails');
+      notifyAjout('error', 'Erreur', 'Erreur lors du chargement des détails');
     } finally {
       setLoadingDetail(false);
     }
@@ -523,9 +525,9 @@ export default function ClientsPage() {
       a.click();
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
-      toast.success('Export RGPD généré avec succès');
+      notifyAjout('success', 'Export RGPD', 'Les données RGPD ont été exportées avec succès');
     } catch (err) {
-      toast.error('Erreur lors de l\'export des données RGPD');
+      notifyAjout('error', 'Erreur', 'Erreur lors de l\'export des données RGPD');
     } finally {
       setConfirmRgpd(null);
     }

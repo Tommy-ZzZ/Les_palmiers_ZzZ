@@ -22,6 +22,7 @@ import {
   ContactClient,
   StatutClient
 } from '../types';
+import { notifyAjout } from '../components/ui/AjoutNotification';
 
 // ============================================
 // CONSTANTES
@@ -517,7 +518,7 @@ const MessagesTab = ({
               onClick={() => {
                 if (selectedMessage) {
                   navigator.clipboard.writeText(selectedMessage.corps);
-                  toast.success('Contenu copié dans le presse-papiers');
+                  notifyAjout('success', 'Copié', 'Contenu copié dans le presse-papiers');
                 }
               }}
               className="px-4 py-2 text-sm font-medium text-gray-700 border border-gray-200 rounded-xl hover:bg-gray-50 transition-colors flex items-center gap-2"
@@ -624,12 +625,12 @@ const ModelesTab = ({
     setSaving(true);
     try {
       await onUpdate(editData);
-      toast.success('Modèle sauvegardé avec succès');
+      notifyAjout('success', 'Modèle sauvegardé', 'Le modèle a été sauvegardé avec succès');
       setIsEditing(false);
       setSelectedModele(editData);
       onRefresh();
     } catch {
-      toast.error('Erreur lors de la sauvegarde');
+      notifyAjout('error', 'Erreur', 'Erreur lors de la sauvegarde du modèle');
     } finally {
       setSaving(false);
     }
@@ -639,10 +640,10 @@ const ModelesTab = ({
     if (!selectedModele) return;
     try {
       await onValidate(selectedModele.id);
-      toast.success('Modèle validé avec succès');
+      notifyAjout('success', 'Modèle validé', 'Le modèle a été validé avec succès');
       onRefresh();
     } catch {
-      toast.error('Erreur lors de la validation');
+      notifyAjout('error', 'Erreur', 'Erreur lors de la validation du modèle');
     }
   };
 
@@ -942,7 +943,7 @@ const ContactsTab = ({
   const handleSendGroupeClick = async () => {
     const clientIds = filtered.map((c: ContactClient) => c.id);
     if (clientIds.length === 0) {
-      toast('Aucun client sélectionné', { icon: 'ℹ️' });
+      notifyAjout('info', 'Information', 'Aucun client sélectionné');
       return;
     }
     setSendingGroupe(true);
@@ -1245,7 +1246,7 @@ const CommunicationPage: React.FC = () => {
       }
     } catch (error) {
       console.error('Erreur chargement données:', error);
-      toast.error('Erreur lors du chargement des données');
+      notifyAjout('error', 'Erreur', 'Erreur lors du chargement des données');
     } finally {
       setLoading(false);
     }
@@ -1318,14 +1319,14 @@ const CommunicationPage: React.FC = () => {
         corps: modele.corps,
         type: modele.type
       }));
-      toast.success(`Modèle "${modele.nom}" appliqué avec succès`);
+      notifyAjout('success', 'Modèle appliqué', `Le modèle "${modele.nom}" a été appliqué avec succès`);
     }
   };
 
   // ─── ENVOI DU MESSAGE ───
   const handleSendNewMessage = async () => {
     if (!newMessageForm.clientId || !newMessageForm.sujet || !newMessageForm.corps) {
-      toast.error('Veuillez remplir tous les champs obligatoires');
+      notifyAjout('error', 'Erreur', 'Veuillez remplir tous les champs obligatoires');
       return;
     }
 
@@ -1341,18 +1342,18 @@ const CommunicationPage: React.FC = () => {
       });
 
       if (response.success) {
-        toast.success('📧 Message envoyé avec succès !');
+        notifyAjout('success', 'Message envoyé', 'Le message a été envoyé avec succès');
         setShowNewMessageModal(false);
         setNewMessageForm({ clientId: '', modeleId: '', sujet: '', corps: '', type: 'MANUEL', reservationId: '' });
         setSelectedClient(null);
         setClientSearch('');
         await loadData();
       } else {
-        toast.error(response.message || 'Erreur lors de l\'envoi du message');
+        notifyAjout('error', 'Erreur', response.message || 'Erreur lors de l\'envoi du message');
       }
     } catch (error) {
       console.error('Erreur envoi message:', error);
-      toast.error('Erreur lors de l\'envoi du message');
+      notifyAjout('error', 'Erreur', 'Erreur lors de l\'envoi du message');
     } finally {
       setSendingMessage(false);
     }
@@ -1378,14 +1379,14 @@ const CommunicationPage: React.FC = () => {
     try {
       const response = await communicationService.envoyerRelanceGroupe(clientIds);
       if (response.success) {
-        toast.success(response.message || `${response.count} relance(s) envoyée(s) avec succès`);
+        notifyAjout('success', 'Relances envoyées', `${response.count || clientIds.length} relance(s) envoyée(s) avec succès`);
         await loadData();
       } else {
-        toast.error(response.message || 'Erreur lors de l\'envoi groupé');
+        notifyAjout('error', 'Erreur', response.message || 'Erreur lors de l\'envoi groupé');
       }
     } catch (error) {
       console.error('Erreur envoi groupé:', error);
-      toast.error('Erreur lors de l\'envoi groupé');
+      notifyAjout('error', 'Erreur', 'Erreur lors de l\'envoi groupé');
     }
   };
 
@@ -1409,13 +1410,13 @@ const CommunicationPage: React.FC = () => {
     try {
       const response = await communicationService.reessayerEnvoi(id);
       if (response.success) {
-        toast.success('📧 Réessai effectué avec succès');
+        notifyAjout('success', 'Réessai effectué', 'Le réessai a été effectué avec succès');
         await loadData();
       } else {
-        toast.error(response.message || 'Erreur lors du réessai');
+        notifyAjout('error', 'Erreur', response.message || 'Erreur lors du réessai');
       }
     } catch {
-      toast.error('Erreur lors du réessai');
+      notifyAjout('error', 'Erreur', 'Erreur lors du réessai');
     }
   };
 
@@ -1435,14 +1436,14 @@ const CommunicationPage: React.FC = () => {
       };
       const response = await communicationService.createModele(newModele);
       if (response.success) {
-        toast.success('Modèle créé avec succès');
+        notifyAjout('success', 'Modèle créé', 'Le modèle a été créé avec succès');
         await loadData();
       } else {
-        toast.error(response.message || 'Erreur lors de la création');
+        notifyAjout('error', 'Erreur', response.message || 'Erreur lors de la création');
       }
     } catch (error) {
       console.error('Erreur création modèle:', error);
-      toast.error('Erreur lors de la création du modèle');
+      notifyAjout('error', 'Erreur', 'Erreur lors de la création du modèle');
     }
   };
 
@@ -1450,13 +1451,13 @@ const CommunicationPage: React.FC = () => {
     try {
       const response = await communicationService.deleteModele(id);
       if (response.success) {
-        toast.success('Modèle supprimé avec succès');
+        notifyAjout('success', 'Modèle supprimé', 'Le modèle a été supprimé avec succès');
         await loadData();
       } else {
-        toast.error(response.message || 'Erreur lors de la suppression');
+        notifyAjout('error', 'Erreur', response.message || 'Erreur lors de la suppression');
       }
     } catch {
-      toast.error('Erreur lors de la suppression');
+      notifyAjout('error', 'Erreur', 'Erreur lors de la suppression');
     }
   };
 
@@ -1464,13 +1465,13 @@ const CommunicationPage: React.FC = () => {
     try {
       const response = await communicationService.deleteMessage(id);
       if (response.success) {
-        toast.success('Message supprimé avec succès');
+        notifyAjout('success', 'Message supprimé', 'Le message a été supprimé avec succès');
         await loadData();
       } else {
-        toast.error(response.message || 'Erreur lors de la suppression');
+        notifyAjout('error', 'Erreur', response.message || 'Erreur lors de la suppression');
       }
     } catch {
-      toast.error('Erreur lors de la suppression');
+      notifyAjout('error', 'Erreur', 'Erreur lors de la suppression');
     }
   };
 
