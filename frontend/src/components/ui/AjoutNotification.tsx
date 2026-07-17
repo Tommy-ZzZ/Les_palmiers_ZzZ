@@ -1,8 +1,8 @@
 // frontend/src/components/ui/AjoutNotification.tsx
 import React, { useEffect, useState, useCallback, useRef } from 'react';
-import { CheckCircle2, XCircle, X } from 'lucide-react';
+import { CheckCircle2, XCircle, X, AlertTriangle, Info } from 'lucide-react';
 
-type AjoutNotifType = 'success' | 'error';
+export type AjoutNotifType = 'success' | 'error' | 'warning' | 'info';
 
 interface AjoutNotifDetail {
   type: AjoutNotifType;
@@ -17,7 +17,7 @@ interface ToastItem extends AjoutNotifDetail {
 const EVENT_NAME = 'ajout-notification';
 const DURATION = 4000;
 
-// À appeler depuis n'importe quelle page pour déclencher le toast
+// ✅ Fonction exportée nommée (pour l'utiliser dans api.ts)
 export function notifyAjout(type: AjoutNotifType, message: string, description?: string) {
   window.dispatchEvent(
     new CustomEvent<AjoutNotifDetail>(EVENT_NAME, { detail: { type, message, description } })
@@ -93,30 +93,62 @@ function ToastCard({ toast, onClose }: { toast: ToastItem; onClose: (id: number)
     if (remainingRef.current > 0) startTimer(remainingRef.current);
   };
 
-  const isSuccess = toast.type === 'success';
+  const config = {
+    success: {
+      bg: 'bg-white/95 border-emerald-200 shadow-emerald-200/40',
+      iconBg: 'from-emerald-400 to-emerald-600',
+      ringBg: 'bg-emerald-300/50',
+      text: 'text-emerald-800',
+      Icon: CheckCircle2,
+      progress: 'from-emerald-400 to-emerald-500',
+    },
+    error: {
+      bg: 'bg-white/95 border-rose-200 shadow-rose-200/40',
+      iconBg: 'from-rose-400 to-rose-600',
+      ringBg: 'bg-rose-300/50',
+      text: 'text-rose-800',
+      Icon: XCircle,
+      progress: 'from-rose-400 to-rose-500',
+    },
+    warning: {
+      bg: 'bg-white/95 border-amber-200 shadow-amber-200/40',
+      iconBg: 'from-amber-400 to-amber-600',
+      ringBg: 'bg-amber-300/50',
+      text: 'text-amber-800',
+      Icon: AlertTriangle,
+      progress: 'from-amber-400 to-amber-500',
+    },
+    info: {
+      bg: 'bg-white/95 border-blue-200 shadow-blue-200/40',
+      iconBg: 'from-blue-400 to-blue-600',
+      ringBg: 'bg-blue-300/50',
+      text: 'text-blue-800',
+      Icon: Info,
+      progress: 'from-blue-400 to-blue-500',
+    },
+  };
+
+  const c = config[toast.type] || config.success;
+  const Icon = c.Icon;
 
   return (
     <div
       onMouseEnter={handleMouseEnter}
       onMouseLeave={handleMouseLeave}
-      className={`${closing ? 'ajout-toast-exit' : 'ajout-toast-enter'} relative w-[320px] pointer-events-auto overflow-hidden rounded-2xl shadow-2xl border backdrop-blur-xl ${
-        isSuccess ? 'bg-white/95 border-emerald-200 shadow-emerald-200/40' : 'bg-white/95 border-rose-200 shadow-rose-200/40'
-      }`}
+      className={`${closing ? 'ajout-toast-exit' : 'ajout-toast-enter'} relative w-[320px] pointer-events-auto overflow-hidden rounded-2xl shadow-2xl border backdrop-blur-xl ${c.bg}`}
     >
-      <div className={`absolute inset-0 opacity-[0.06] ajout-shimmer ${isSuccess ? 'text-emerald-500' : 'text-rose-500'}`} />
+      <div className={`absolute inset-0 opacity-[0.06] ajout-shimmer ${toast.type === 'success' ? 'text-emerald-500' : toast.type === 'error' ? 'text-rose-500' : toast.type === 'warning' ? 'text-amber-500' : 'text-blue-500'}`} />
 
       <div className="relative flex items-start gap-3 px-4 py-3.5">
         <div className="relative shrink-0 w-9 h-9 flex items-center justify-center">
-          <span className={`absolute inset-0 rounded-full ajout-ring ${isSuccess ? 'bg-emerald-300/50' : 'bg-rose-300/50'}`} />
-          <span className={`relative w-9 h-9 rounded-full flex items-center justify-center ajout-icon-pop ${
-            isSuccess ? 'bg-gradient-to-br from-emerald-400 to-emerald-600' : 'bg-gradient-to-br from-rose-400 to-rose-600'
-          }`}>
-            {isSuccess ? <CheckCircle2 size={18} className="text-white" strokeWidth={2.5} /> : <XCircle size={18} className="text-white" strokeWidth={2.5} />}
+          <span className={`absolute inset-0 rounded-full ajout-ring ${c.ringBg}`} />
+          <span className={`relative w-9 h-9 rounded-full flex items-center justify-center ajout-icon-pop bg-gradient-to-br ${c.iconBg}`}>
+            <Icon size={18} className="text-white" strokeWidth={2.5} />
           </span>
         </div>
 
         <div className="flex-1 pt-0.5 min-w-0">
-          <p className={`text-sm font-semibold leading-snug ${isSuccess ? 'text-emerald-800' : 'text-rose-800'}`}>{toast.message}</p>
+          <p className={`text-sm font-semibold leading-snug ${c.text}`}>{toast.message}</p>
           {toast.description && <p className="text-xs text-gray-500 mt-0.5 leading-snug">{toast.description}</p>}
         </div>
 
@@ -127,7 +159,7 @@ function ToastCard({ toast, onClose }: { toast: ToastItem; onClose: (id: number)
 
       <div className="h-1 w-full bg-gray-100">
         <div
-          className={`h-full ajout-progress ${isSuccess ? 'bg-gradient-to-r from-emerald-400 to-emerald-500' : 'bg-gradient-to-r from-rose-400 to-rose-500'}`}
+          className={`h-full ajout-progress bg-gradient-to-r ${c.progress}`}
           style={{ animationDuration: `${DURATION}ms`, animationPlayState: paused ? 'paused' : 'running' }}
         />
       </div>
@@ -135,6 +167,7 @@ function ToastCard({ toast, onClose }: { toast: ToastItem; onClose: (id: number)
   );
 }
 
+// ✅ Export par défaut du composant (pour l'utiliser dans App.tsx)
 export default function AjoutNotificationHost() {
   const [toasts, setToasts] = useState<ToastItem[]>([]);
   const idRef = useRef(0);

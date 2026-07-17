@@ -13,7 +13,7 @@ import {
   Smile, Heart, Award, Shield, Layers, Grid, List,
   ArrowUp, ArrowDown, MoreVertical, SendHorizontal
 } from 'lucide-react';
-import { communicationService, clientService } from '../services/api';
+import { communicationService, clientService, reservationService } from '../services/api';
 import {
   ModeleMessage,
   MessageEmail,
@@ -92,35 +92,39 @@ const STATUT_CONFIG: Record<string, { label: string; className: string; icon: Re
 // COMPOSANTS UI
 // ============================================
 
-const Spinner = () => (
-  <div className="flex flex-col items-center justify-center py-16 gap-3">
-    <div className="relative">
-      <div className="w-12 h-12 border-3 border-palmier-200 border-t-palmier-600 rounded-full animate-spin" />
-      <div className="absolute inset-0 flex items-center justify-center">
-        <Sparkles size={14} className="text-palmier-400 animate-pulse" />
+const Spinner = () => {
+  return (
+    <div className="flex flex-col items-center justify-center py-16 gap-3">
+      <div className="relative">
+        <div className="w-12 h-12 border-3 border-palmier-200 border-t-palmier-600 rounded-full animate-spin" />
+        <div className="absolute inset-0 flex items-center justify-center">
+          <Sparkles size={14} className="text-palmier-400 animate-pulse" />
+        </div>
       </div>
+      <p className="text-sm text-gray-500 animate-pulse">Chargement...</p>
     </div>
-    <p className="text-sm text-gray-500 animate-pulse">Chargement...</p>
-  </div>
-);
+  );
+};
 
 const EmptyState = ({ icon, title, description, action }: {
   icon: React.ReactNode;
   title: string;
   description: string;
   action?: React.ReactNode;
-}) => (
-  <div className="flex flex-col items-center justify-center py-16 gap-4">
-    <div className="p-5 bg-gradient-to-br from-gray-50 to-gray-100 rounded-2xl text-gray-300">
-      {icon}
+}) => {
+  return (
+    <div className="flex flex-col items-center justify-center py-16 gap-4">
+      <div className="p-5 bg-gradient-to-br from-gray-50 to-gray-100 rounded-2xl text-gray-300">
+        {icon}
+      </div>
+      <div className="text-center">
+        <p className="font-semibold text-gray-800 text-lg">{title}</p>
+        <p className="text-sm text-gray-500 mt-1 max-w-sm">{description}</p>
+      </div>
+      {action && <div className="mt-2">{action}</div>}
     </div>
-    <div className="text-center">
-      <p className="font-semibold text-gray-800 text-lg">{title}</p>
-      <p className="text-sm text-gray-500 mt-1 max-w-sm">{description}</p>
-    </div>
-    {action && <div className="mt-2">{action}</div>}
-  </div>
-);
+  );
+};
 
 const StatutBadge = ({ statut }: { statut: string }) => {
   const c = STATUT_CONFIG[statut] || STATUT_CONFIG.EN_ATTENTE;
@@ -335,7 +339,8 @@ const MessagesTab = ({
 
   return (
     <div className="space-y-4">
-      <div className="bg-white rounded-xl border border-gray-200 p-4">
+      {/* Barre de recherche avec meilleur contraste */}
+      <div className="bg-white rounded-xl border border-gray-200 p-4 shadow-sm">
         <div className="flex flex-wrap gap-3 items-center">
           <div className="flex-1 min-w-[200px]">
             <div className="relative">
@@ -345,14 +350,14 @@ const MessagesTab = ({
                 placeholder="Rechercher par email, sujet..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full pl-10 pr-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-palmier-500 text-gray-900 placeholder-gray-400 bg-gray-50 hover:bg-white transition-colors"
+                className="w-full pl-10 pr-4 py-2.5 border border-gray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-palmier-500 text-gray-900 placeholder-gray-400 bg-white hover:border-palmier-300 transition-colors"
               />
             </div>
           </div>
           <select
             value={filterType}
             onChange={(e) => setFilterType(e.target.value)}
-            className="px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-palmier-500 text-gray-700 bg-gray-50 hover:bg-white transition-colors"
+            className="px-3 py-2.5 border border-gray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-palmier-500 text-gray-700 bg-white hover:border-palmier-300 transition-colors"
           >
             <option value="TOUS">Tous les types</option>
             {Object.keys(TYPE_LABELS).map((key: string) => (
@@ -362,7 +367,7 @@ const MessagesTab = ({
           <select
             value={filterStatut}
             onChange={(e) => setFilterStatut(e.target.value)}
-            className="px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-palmier-500 text-gray-700 bg-gray-50 hover:bg-white transition-colors"
+            className="px-3 py-2.5 border border-gray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-palmier-500 text-gray-700 bg-white hover:border-palmier-300 transition-colors"
           >
             <option value="TOUS">Tous les statuts</option>
             <option value="ENVOYE">Envoyé</option>
@@ -379,13 +384,14 @@ const MessagesTab = ({
           </button>
           <button
             onClick={onRefresh}
-            className="p-2.5 border border-gray-200 rounded-xl hover:bg-gray-50 transition-colors"
+            className="p-2.5 border border-gray-300 rounded-xl hover:bg-gray-50 transition-colors"
             title="Rafraîchir"
           >
             <RefreshCw size={16} className="text-gray-500" />
           </button>
         </div>
-        <div className="flex flex-wrap gap-1.5 mt-3 pt-3 border-t border-gray-100">
+        {/* Filtres rapides */}
+        <div className="flex flex-wrap gap-1.5 mt-3 pt-3 border-t border-gray-200">
           {['TOUS', 'CONFIRMATION', 'RAPPEL_J7', 'REMERCIEMENT_J2', 'ANNULATION', 'RELANCE_PAIEMENT'].map((type: string) => {
             const count = messages.filter((m: MessageEmail) => type === 'TOUS' || m.type === type).length;
             const active = filterType === type;
@@ -397,7 +403,7 @@ const MessagesTab = ({
                 className={`px-3 py-1 text-xs rounded-full border transition-all hover:scale-105 ${
                   active
                     ? 'bg-palmier-500 text-white border-palmier-500 shadow-sm'
-                    : 'border-gray-200 text-gray-600 hover:bg-gray-50'
+                    : 'border-gray-300 text-gray-700 hover:bg-gray-50'
                 }`}
               >
                 {label} ({count})
@@ -407,7 +413,8 @@ const MessagesTab = ({
         </div>
       </div>
 
-      <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+      {/* Tableau des messages avec meilleur contraste */}
+      <div className="bg-white rounded-xl border border-gray-200 overflow-hidden shadow-sm">
         {filtered.length === 0 ? (
           <EmptyState
             icon={<Inbox size={32} />}
@@ -426,35 +433,42 @@ const MessagesTab = ({
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
-                <tr className="bg-gray-50/80 border-b border-gray-200">
-                  <th className="px-4 py-3 text-left font-medium text-gray-600 text-xs uppercase tracking-wider">Date</th>
-                  <th className="px-4 py-3 text-left font-medium text-gray-600 text-xs uppercase tracking-wider">Type</th>
-                  <th className="px-4 py-3 text-left font-medium text-gray-600 text-xs uppercase tracking-wider">Destinataire</th>
-                  <th className="px-4 py-3 text-left font-medium text-gray-600 text-xs uppercase tracking-wider">Sujet</th>
-                  <th className="px-4 py-3 text-left font-medium text-gray-600 text-xs uppercase tracking-wider">Statut</th>
-                  <th className="px-4 py-3 text-center font-medium text-gray-600 text-xs uppercase tracking-wider">Actions</th>
+                <tr className="bg-gray-50 border-b border-gray-200">
+                  <th className="px-4 py-3 text-left font-medium text-gray-700 text-xs uppercase tracking-wider">Date</th>
+                  <th className="px-4 py-3 text-left font-medium text-gray-700 text-xs uppercase tracking-wider">Type</th>
+                  <th className="px-4 py-3 text-left font-medium text-gray-700 text-xs uppercase tracking-wider">Destinataire</th>
+                  <th className="px-4 py-3 text-left font-medium text-gray-700 text-xs uppercase tracking-wider">Sujet</th>
+                  <th className="px-4 py-3 text-left font-medium text-gray-700 text-xs uppercase tracking-wider">Statut</th>
+                  <th className="px-4 py-3 text-center font-medium text-gray-700 text-xs uppercase tracking-wider">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
                 {filtered.map((msg: MessageEmail) => (
                   <tr
                     key={msg.id}
-                    className="hover:bg-gray-50/50 transition-colors cursor-pointer group"
-                    onClick={() => { setSelectedMessage(msg); setShowDetails(true); }}
+                    className="hover:bg-gray-50 transition-colors cursor-pointer group"
+                    onClick={() => {
+                      setSelectedMessage(msg);
+                      setShowDetails(true);
+                    }}
                   >
-                    <td className="px-4 py-3 text-gray-700 text-sm">
+                    <td className="px-4 py-3 text-gray-800 text-sm">
                       {new Date(msg.dateEnvoi).toLocaleDateString('fr-FR')}
                       <br />
-                      <span className="text-xs text-gray-400">{new Date(msg.dateEnvoi).toLocaleTimeString('fr-FR')}</span>
+                      <span className="text-xs text-gray-500">{new Date(msg.dateEnvoi).toLocaleTimeString('fr-FR')}</span>
                     </td>
                     <td className="px-4 py-3"><TypeBadge type={msg.type} /></td>
-                    <td className="px-4 py-3 text-gray-700 text-sm truncate max-w-[150px]">{msg.destinataire}</td>
-                    <td className="px-4 py-3 text-gray-700 text-sm truncate max-w-[200px]">{msg.sujet}</td>
+                    <td className="px-4 py-3 text-gray-800 text-sm truncate max-w-[150px]">{msg.destinataire}</td>
+                    <td className="px-4 py-3 text-gray-800 text-sm truncate max-w-[200px]">{msg.sujet}</td>
                     <td className="px-4 py-3"><StatutBadge statut={msg.statut} /></td>
                     <td className="px-4 py-3">
                       <div className="flex items-center justify-center gap-1">
                         <button
-                          onClick={(e) => { e.stopPropagation(); setSelectedMessage(msg); setShowDetails(true); }}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setSelectedMessage(msg);
+                            setShowDetails(true);
+                          }}
                           className="p-1.5 hover:bg-gray-100 rounded-lg transition-colors text-gray-500 hover:text-gray-700"
                           title="Voir les détails"
                         >
@@ -486,9 +500,13 @@ const MessagesTab = ({
         )}
       </div>
 
+      {/* Modal détails */}
       <Modal
         isOpen={showDetails}
-        onClose={() => { setShowDetails(false); setSelectedMessage(null); }}
+        onClose={() => {
+          setShowDetails(false);
+          setSelectedMessage(null);
+        }}
         title={
           <div className="flex items-center gap-2">
             <div className="p-1.5 bg-palmier-100 rounded-lg">
@@ -501,14 +519,20 @@ const MessagesTab = ({
         footer={
           <div className="flex justify-end gap-3">
             <button
-              onClick={() => { setShowDetails(false); setSelectedMessage(null); }}
-              className="px-4 py-2 text-sm font-medium text-gray-700 border border-gray-200 rounded-xl hover:bg-gray-50 transition-colors"
+              onClick={() => {
+                setShowDetails(false);
+                setSelectedMessage(null);
+              }}
+              className="px-4 py-2 text-sm font-medium text-gray-700 border border-gray-300 rounded-xl hover:bg-gray-50 transition-colors"
             >
               Fermer
             </button>
             {selectedMessage?.statut === 'ECHEC' && (
               <button
-                onClick={() => { if (selectedMessage) onReessayer(selectedMessage.id); setShowDetails(false); }}
+                onClick={() => {
+                  if (selectedMessage) onReessayer(selectedMessage.id);
+                  setShowDetails(false);
+                }}
                 className="px-4 py-2 text-sm font-medium text-white bg-amber-500 hover:bg-amber-600 rounded-xl flex items-center gap-2 transition-all hover:scale-105"
               >
                 <RotateCw size={15} /> Réessayer
@@ -521,7 +545,7 @@ const MessagesTab = ({
                   notifyAjout('success', 'Copié', 'Contenu copié dans le presse-papiers');
                 }
               }}
-              className="px-4 py-2 text-sm font-medium text-gray-700 border border-gray-200 rounded-xl hover:bg-gray-50 transition-colors flex items-center gap-2"
+              className="px-4 py-2 text-sm font-medium text-gray-700 border border-gray-300 rounded-xl hover:bg-gray-50 transition-colors flex items-center gap-2"
             >
               <Copy size={15} /> Copier
             </button>
@@ -588,7 +612,7 @@ const MessagesTab = ({
 };
 
 // ============================================
-// TAB : MODÈLES
+// TAB : MODÈLES (avec formulaire de création)
 // ============================================
 
 const ModelesTab = ({
@@ -615,6 +639,16 @@ const ModelesTab = ({
   const [saving, setSaving] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState<number | null>(null);
 
+  // État pour le formulaire de création de modèle
+  const [showCreateModal, setShowCreateModal] = useState(false);
+  const [newModeleData, setNewModeleData] = useState({
+    nom: '',
+    type: 'MANUEL' as TypeMessage,
+    sujet: '',
+    corps: '',
+    variables: [] as string[]
+  });
+
   const handleEdit = (modele: ModeleMessage) => {
     setIsEditing(true);
     setEditData({ ...modele });
@@ -629,7 +663,8 @@ const ModelesTab = ({
       setIsEditing(false);
       setSelectedModele(editData);
       onRefresh();
-    } catch {
+    } catch (error) {
+      console.error('Erreur lors de la sauvegarde:', error);
       notifyAjout('error', 'Erreur', 'Erreur lors de la sauvegarde du modèle');
     } finally {
       setSaving(false);
@@ -642,7 +677,8 @@ const ModelesTab = ({
       await onValidate(selectedModele.id);
       notifyAjout('success', 'Modèle validé', 'Le modèle a été validé avec succès');
       onRefresh();
-    } catch {
+    } catch (error) {
+      console.error('Erreur lors de la validation:', error);
       notifyAjout('error', 'Erreur', 'Erreur lors de la validation du modèle');
     }
   };
@@ -655,10 +691,49 @@ const ModelesTab = ({
     }
   };
 
+  // Création d'un nouveau modèle
+  const handleCreateModele = async () => {
+    if (!newModeleData.nom || !newModeleData.sujet || !newModeleData.corps) {
+      notifyAjout('error', 'Erreur', 'Veuillez remplir tous les champs obligatoires');
+      return;
+    }
+
+    setSaving(true);
+    try {
+      const payload = {
+        nom: newModeleData.nom,
+        type: newModeleData.type,
+        sujet: newModeleData.sujet,
+        corps: newModeleData.corps,
+        variables: newModeleData.variables,
+        dateModification: new Date(),
+        valide: false,
+        creePar: 1,
+        dateCreation: new Date()
+      };
+
+      const response = await communicationService.createModele(payload);
+      if (response.success) {
+        notifyAjout('success', 'Modèle créé', 'Le modèle a été créé avec succès');
+        setShowCreateModal(false);
+        setNewModeleData({ nom: '', type: 'MANUEL', sujet: '', corps: '', variables: [] });
+        onRefresh();
+      } else {
+        notifyAjout('error', 'Erreur', response.message || 'Erreur lors de la création');
+      }
+    } catch (error) {
+      console.error('Erreur lors de la création du modèle:', error);
+      notifyAjout('error', 'Erreur', 'Erreur lors de la création du modèle');
+    } finally {
+      setSaving(false);
+    }
+  };
+
   if (loading) return <Spinner />;
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      {/* Liste des modèles */}
       <div className="lg:col-span-1 space-y-3">
         <div className="flex justify-between items-center">
           <h3 className="font-semibold text-gray-800 flex items-center gap-2">
@@ -667,7 +742,7 @@ const ModelesTab = ({
             <span className="text-xs text-gray-400 font-normal">({modeles.length})</span>
           </h3>
           <button
-            onClick={onCreate}
+            onClick={() => setShowCreateModal(true)}
             className="p-1.5 bg-palmier-600 text-white rounded-lg hover:bg-palmier-700 transition-all hover:scale-105"
             title="Créer un modèle"
           >
@@ -678,7 +753,10 @@ const ModelesTab = ({
           {modeles.map((modele: ModeleMessage) => (
             <div
               key={modele.id}
-              onClick={() => { setSelectedModele(modele); setIsEditing(false); }}
+              onClick={() => {
+                setSelectedModele(modele);
+                setIsEditing(false);
+              }}
               className={`p-3 rounded-xl border cursor-pointer transition-all duration-200 ${
                 selectedModele?.id === modele.id
                   ? 'border-palmier-500 bg-palmier-50 shadow-sm ring-1 ring-palmier-200'
@@ -712,11 +790,12 @@ const ModelesTab = ({
         <div className="p-3 bg-blue-50 rounded-xl border border-blue-200">
           <p className="text-xs text-gray-700 flex items-center gap-1.5">
             <AlertCircle size={14} className="text-blue-500 shrink-0" />
-            <span>RG6 : Les modèles doivent être validés par la gérante</span>
+            <span>Vos modèles !</span>
           </p>
         </div>
       </div>
 
+      {/* Détail du modèle sélectionné */}
       <div className="lg:col-span-2">
         {selectedModele ? (
           <div className="bg-white rounded-xl border border-gray-200 p-5 transition-all duration-200">
@@ -739,7 +818,7 @@ const ModelesTab = ({
               <div className="flex gap-2 flex-wrap">
                 <button
                   onClick={() => setPreviewMode(!previewMode)}
-                  className="px-3 py-1.5 text-sm border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors flex items-center gap-1.5"
+                  className="px-3 py-1.5 text-sm border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors flex items-center gap-1.5 text-gray-700"
                 >
                   {previewMode ? <Edit size={14} /> : <Eye size={14} />}
                   {previewMode ? 'Éditer' : 'Aperçu'}
@@ -747,7 +826,7 @@ const ModelesTab = ({
                 {!isEditing && (
                   <button
                     onClick={() => handleEdit(selectedModele)}
-                    className="px-3 py-1.5 text-sm border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors flex items-center gap-1.5"
+                    className="px-3 py-1.5 text-sm border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors flex items-center gap-1.5 text-gray-700"
                   >
                     <Edit size={14} /> Modifier
                   </button>
@@ -821,8 +900,10 @@ const ModelesTab = ({
                   <input
                     type="text"
                     value={isEditing && editData ? editData.nom : selectedModele.nom}
-                    onChange={(e) => isEditing && editData && setEditData({ ...editData, nom: e.target.value })}
-                    className={`w-full mt-1 px-3 py-2 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-palmier-500 text-gray-900 transition-colors ${!isEditing ? 'bg-gray-50 cursor-not-allowed' : 'bg-white'}`}
+                    onChange={(e) => {
+                      isEditing && editData && setEditData({ ...editData, nom: e.target.value });
+                    }}
+                    className={`w-full mt-1 px-3 py-2 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-palmier-500 text-gray-900 transition-colors ${!isEditing ? 'bg-gray-50 cursor-not-allowed' : 'bg-white'}`}
                     disabled={!isEditing}
                   />
                 </div>
@@ -830,8 +911,10 @@ const ModelesTab = ({
                   <label className="block text-sm font-medium text-gray-700">Type</label>
                   <select
                     value={isEditing && editData ? editData.type : selectedModele.type}
-                    onChange={(e) => isEditing && editData && setEditData({ ...editData, type: e.target.value as TypeMessage })}
-                    className={`w-full mt-1 px-3 py-2 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-palmier-500 text-gray-900 transition-colors ${!isEditing ? 'bg-gray-50 cursor-not-allowed' : 'bg-white'}`}
+                    onChange={(e) => {
+                      isEditing && editData && setEditData({ ...editData, type: e.target.value as TypeMessage });
+                    }}
+                    className={`w-full mt-1 px-3 py-2 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-palmier-500 text-gray-900 transition-colors ${!isEditing ? 'bg-gray-50 cursor-not-allowed' : 'bg-white'}`}
                     disabled={!isEditing}
                   >
                     {Object.keys(TYPE_LABELS).map((key: string) => (
@@ -844,8 +927,10 @@ const ModelesTab = ({
                   <input
                     type="text"
                     value={isEditing && editData ? editData.sujet : selectedModele.sujet}
-                    onChange={(e) => isEditing && editData && setEditData({ ...editData, sujet: e.target.value })}
-                    className={`w-full mt-1 px-3 py-2 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-palmier-500 text-gray-900 transition-colors ${!isEditing ? 'bg-gray-50 cursor-not-allowed' : 'bg-white'}`}
+                    onChange={(e) => {
+                      isEditing && editData && setEditData({ ...editData, sujet: e.target.value });
+                    }}
+                    className={`w-full mt-1 px-3 py-2 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-palmier-500 text-gray-900 transition-colors ${!isEditing ? 'bg-gray-50 cursor-not-allowed' : 'bg-white'}`}
                     disabled={!isEditing}
                   />
                 </div>
@@ -853,9 +938,11 @@ const ModelesTab = ({
                   <label className="block text-sm font-medium text-gray-700">Corps du message</label>
                   <textarea
                     value={isEditing && editData ? editData.corps : selectedModele.corps}
-                    onChange={(e) => isEditing && editData && setEditData({ ...editData, corps: e.target.value })}
+                    onChange={(e) => {
+                      isEditing && editData && setEditData({ ...editData, corps: e.target.value });
+                    }}
                     rows={10}
-                    className={`w-full mt-1 px-3 py-2 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-palmier-500 font-mono text-sm text-gray-900 transition-colors ${!isEditing ? 'bg-gray-50 cursor-not-allowed' : 'bg-white'}`}
+                    className={`w-full mt-1 px-3 py-2 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-palmier-500 font-mono text-sm text-gray-900 transition-colors ${!isEditing ? 'bg-gray-50 cursor-not-allowed' : 'bg-white'}`}
                     disabled={!isEditing}
                   />
                 </div>
@@ -891,6 +978,133 @@ const ModelesTab = ({
         )}
       </div>
 
+      {/* Modal de création de modèle */}
+      <Modal
+        isOpen={showCreateModal}
+        onClose={() => {
+          setShowCreateModal(false);
+          setNewModeleData({ nom: '', type: 'MANUEL', sujet: '', corps: '', variables: [] });
+        }}
+        title={
+          <div className="flex items-center gap-2">
+            <div className="p-1.5 bg-palmier-100 rounded-lg">
+              <Plus size={16} className="text-palmier-600" />
+            </div>
+            <span>Nouveau modèle de message</span>
+          </div>
+        }
+        size="lg"
+        footer={
+          <div className="flex gap-3 justify-end">
+            <button
+              onClick={() => {
+                setShowCreateModal(false);
+                setNewModeleData({ nom: '', type: 'MANUEL', sujet: '', corps: '', variables: [] });
+              }}
+              className="px-4 py-2.5 text-sm font-medium text-gray-700 border border-gray-300 rounded-xl hover:bg-gray-50 transition-colors"
+            >
+              Annuler
+            </button>
+            <button
+              onClick={handleCreateModele}
+              disabled={saving || !newModeleData.nom || !newModeleData.sujet || !newModeleData.corps}
+              className="px-5 py-2.5 text-sm font-medium text-white bg-palmier-600 hover:bg-palmier-700 rounded-xl transition-all duration-200 hover:scale-105 active:scale-95 disabled:opacity-50 disabled:hover:scale-100 flex items-center gap-2 shadow-lg shadow-palmier-200"
+            >
+              {saving ? (
+                <><Loader2 size={15} className="animate-spin" />Création en cours…</>
+              ) : (
+                <><Save size={15} />Créer le modèle</>
+              )}
+            </button>
+          </div>
+        }
+      >
+        <div className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1.5">Nom du modèle *</label>
+            <input
+              type="text"
+              value={newModeleData.nom}
+              onChange={(e) => setNewModeleData({ ...newModeleData, nom: e.target.value })}
+              placeholder="Ex: Confirmation de réservation"
+              className="w-full px-3.5 py-2.5 border border-gray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-palmier-500 text-gray-900 placeholder-gray-400"
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1.5">Type de message *</label>
+            <select
+              value={newModeleData.type}
+              onChange={(e) => setNewModeleData({ ...newModeleData, type: e.target.value as TypeMessage })}
+              className="w-full px-3.5 py-2.5 border border-gray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-palmier-500 text-gray-700 bg-white"
+            >
+              {Object.keys(TYPE_LABELS).map((key) => (
+                <option key={key} value={key}>{TYPE_LABELS[key].label}</option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1.5">Sujet *</label>
+            <input
+              type="text"
+              value={newModeleData.sujet}
+              onChange={(e) => setNewModeleData({ ...newModeleData, sujet: e.target.value })}
+              placeholder="Sujet du message..."
+              className="w-full px-3.5 py-2.5 border border-gray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-palmier-500 text-gray-900 placeholder-gray-400"
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1.5">Corps du message *</label>
+            <textarea
+              value={newModeleData.corps}
+              onChange={(e) => setNewModeleData({ ...newModeleData, corps: e.target.value })}
+              rows={8}
+              placeholder="Écrivez le corps du message ici. Utilisez {{variable}} pour les champs dynamiques."
+              className="w-full px-3.5 py-2.5 border border-gray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-palmier-500 text-gray-900 placeholder-gray-400 resize-none font-mono"
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1.5">Variables disponibles</label>
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  const vars = ['prenom', 'nom', 'email', 'telephone', 'chambre_nom', 'chambre_numero', 'date_arrivee', 'date_depart', 'montant_total'];
+                  const newVars = [...new Set([...newModeleData.variables, ...vars])];
+                  setNewModeleData({ ...newModeleData, variables: newVars });
+                }}
+                className="px-3 py-1.5 text-xs bg-blue-50 text-blue-700 rounded-lg hover:bg-blue-100 transition-colors border border-blue-200"
+              >
+                + Ajouter toutes les variables
+              </button>
+            </div>
+            <div className="flex flex-wrap gap-1.5 mt-2">
+              {newModeleData.variables.map((v) => (
+                <span key={v} className="px-2 py-0.5 bg-blue-50 text-blue-700 text-xs rounded-full border border-blue-200 font-mono flex items-center gap-1">
+                  {v}
+                  <button
+                    type="button"
+                    onClick={() => setNewModeleData({ ...newModeleData, variables: newModeleData.variables.filter(x => x !== v) })}
+                    className="text-blue-400 hover:text-red-500 transition-colors"
+                  >
+                    ×
+                  </button>
+                </span>
+              ))}
+              {newModeleData.variables.length === 0 && (
+                <span className="text-xs text-gray-400">Aucune variable ajoutée</span>
+              )}
+            </div>
+            <p className="text-xs text-gray-400 mt-1">
+              💡 Utilisez <span className="font-mono bg-gray-100 px-1.5 py-0.5 rounded">&#123;&#123;nom_variable&#125;&#125;</span> dans le corps du message
+            </p>
+          </div>
+        </div>
+      </Modal>
+
       <ConfirmDialog
         isOpen={!!confirmDelete}
         title="Supprimer le modèle"
@@ -912,18 +1126,24 @@ const ContactsTab = ({
   loading,
   onRefresh,
   onSendToClient,
-  onSendGroupe
+  onSendGroupe,
+  onViewClientDetails
 }: {
   contacts: ContactClient[];
   loading: boolean;
   onRefresh: () => void;
   onSendToClient: (clientId: number) => void;
   onSendGroupe: (clientIds: number[]) => Promise<void>;
+  onViewClientDetails: (clientId: number) => void;
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [filterStatut, setFilterStatut] = useState<string>('TOUS');
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
   const [sendingGroupe, setSendingGroupe] = useState(false);
+  const [selectedClientDetails, setSelectedClientDetails] = useState<ContactClient | null>(null);
+  const [showClientDetails, setShowClientDetails] = useState(false);
+  const [clientReservations, setClientReservations] = useState<any[]>([]);
+  const [loadingDetails, setLoadingDetails] = useState(false);
 
   const filtered = contacts.filter((c: ContactClient) => {
     const matchSearch = c.nom.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -954,11 +1174,37 @@ const ContactsTab = ({
     }
   };
 
+  // Récupérer les détails du client et ses réservations
+  const handleViewClientDetails = async (client: ContactClient) => {
+    setSelectedClientDetails(client);
+    setShowClientDetails(true);
+    setLoadingDetails(true);
+    try {
+      // Récupérer les réservations du client
+      const response = await reservationService.getAll({ 
+        search: client.email,
+        include: ['chambre', 'paiements']
+      });
+      if (response.success) {
+        const reservations = response.data || [];
+        setClientReservations(Array.isArray(reservations) ? reservations : []);
+      } else {
+        setClientReservations([]);
+      }
+    } catch (error) {
+      console.error('Erreur lors du chargement des réservations du client:', error);
+      setClientReservations([]);
+    } finally {
+      setLoadingDetails(false);
+    }
+  };
+
   if (loading) return <Spinner />;
 
   return (
     <div className="space-y-4">
-      <div className="bg-white rounded-xl border border-gray-200 p-4">
+      {/* Barre de recherche */}
+      <div className="bg-white rounded-xl border border-gray-200 p-4 shadow-sm">
         <div className="flex flex-wrap gap-3 items-center">
           <div className="flex-1 min-w-[200px]">
             <div className="relative">
@@ -968,30 +1214,30 @@ const ContactsTab = ({
                 placeholder="Rechercher un contact..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full pl-10 pr-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-palmier-500 text-gray-900 placeholder-gray-400 bg-gray-50 hover:bg-white transition-colors"
+                className="w-full pl-10 pr-4 py-2.5 border border-gray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-palmier-500 text-gray-900 placeholder-gray-400 bg-white hover:border-palmier-300 transition-colors"
               />
             </div>
           </div>
           <select
             value={filterStatut}
             onChange={(e) => setFilterStatut(e.target.value)}
-            className="px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-palmier-500 text-gray-700 bg-gray-50 hover:bg-white transition-colors"
+            className="px-3 py-2.5 border border-gray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-palmier-500 text-gray-700 bg-white hover:border-palmier-300 transition-colors"
           >
             <option value="TOUS">Tous les statuts</option>
             <option value="VIP">⭐ VIP</option>
             <option value="REGULIER">🔄 Régulier</option>
             <option value="NOUVEAU">🆕 Nouveau</option>
           </select>
-          <div className="flex border border-gray-200 rounded-xl overflow-hidden">
+          <div className="flex border border-gray-300 rounded-xl overflow-hidden">
             <button
               onClick={() => setViewMode('grid')}
-              className={`px-3 py-2 text-sm transition-colors ${viewMode === 'grid' ? 'bg-palmier-500 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`}
+              className={`px-3 py-2 text-sm transition-colors ${viewMode === 'grid' ? 'bg-palmier-500 text-white' : 'bg-white text-gray-700 hover:bg-gray-50'}`}
             >
               <Grid size={16} />
             </button>
             <button
               onClick={() => setViewMode('list')}
-              className={`px-3 py-2 text-sm transition-colors ${viewMode === 'list' ? 'bg-palmier-500 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`}
+              className={`px-3 py-2 text-sm transition-colors ${viewMode === 'list' ? 'bg-palmier-500 text-white' : 'bg-white text-gray-700 hover:bg-gray-50'}`}
             >
               <List size={16} />
             </button>
@@ -1006,13 +1252,14 @@ const ContactsTab = ({
           </button>
           <button
             onClick={onRefresh}
-            className="p-2.5 border border-gray-200 rounded-xl hover:bg-gray-50 transition-colors"
+            className="p-2.5 border border-gray-300 rounded-xl hover:bg-gray-50 transition-colors"
           >
             <RefreshCw size={16} className="text-gray-500" />
           </button>
         </div>
 
-        <div className="flex flex-wrap gap-4 mt-3 pt-3 border-t border-gray-100">
+        {/* Statistiques des contacts */}
+        <div className="flex flex-wrap gap-4 mt-3 pt-3 border-t border-gray-200">
           <div className="flex items-center gap-1.5 text-sm">
             <span className="text-gray-500">Total :</span>
             <span className="font-semibold text-gray-900">{stats.total}</span>
@@ -1035,6 +1282,7 @@ const ContactsTab = ({
         </div>
       </div>
 
+      {/* Affichage des contacts */}
       {viewMode === 'grid' ? (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {filtered.map((contact: ContactClient) => (
@@ -1061,7 +1309,7 @@ const ContactsTab = ({
               <div className="mt-3 grid grid-cols-2 gap-2 text-sm text-gray-700">
                 <div className="flex items-center gap-1.5">
                   <Phone size={14} className="text-gray-400" />
-                  {contact.telephone}
+                  {contact.telephone || 'Non renseigné'}
                 </div>
                 <div className="flex items-center gap-1.5">
                   <Calendar size={14} className="text-gray-400" />
@@ -1087,7 +1335,10 @@ const ContactsTab = ({
                   <Mail size={14} />
                   Envoyer
                 </button>
-                <button className="px-3 py-1.5 border border-gray-200 text-sm rounded-lg hover:bg-gray-50 transition-colors flex items-center gap-1.5">
+                <button
+                  onClick={() => handleViewClientDetails(contact)}
+                  className="px-3 py-1.5 border border-gray-300 text-sm rounded-lg hover:bg-gray-50 transition-colors flex items-center gap-1.5 text-gray-700"
+                >
                   <Eye size={14} />
                   Voir
                 </button>
@@ -1096,23 +1347,23 @@ const ContactsTab = ({
           ))}
         </div>
       ) : (
-        <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+        <div className="bg-white rounded-xl border border-gray-200 overflow-hidden shadow-sm">
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
-                <tr className="bg-gray-50/80 border-b border-gray-200">
-                  <th className="px-4 py-3 text-left font-medium text-gray-600 text-xs uppercase tracking-wider">Client</th>
-                  <th className="px-4 py-3 text-left font-medium text-gray-600 text-xs uppercase tracking-wider">Email</th>
-                  <th className="px-4 py-3 text-left font-medium text-gray-600 text-xs uppercase tracking-wider">Téléphone</th>
-                  <th className="px-4 py-3 text-left font-medium text-gray-600 text-xs uppercase tracking-wider">Séjours</th>
-                  <th className="px-4 py-3 text-left font-medium text-gray-600 text-xs uppercase tracking-wider">Dépensé</th>
-                  <th className="px-4 py-3 text-left font-medium text-gray-600 text-xs uppercase tracking-wider">Statut</th>
-                  <th className="px-4 py-3 text-center font-medium text-gray-600 text-xs uppercase tracking-wider">Actions</th>
+                <tr className="bg-gray-50 border-b border-gray-200">
+                  <th className="px-4 py-3 text-left font-medium text-gray-700 text-xs uppercase tracking-wider">Client</th>
+                  <th className="px-4 py-3 text-left font-medium text-gray-700 text-xs uppercase tracking-wider">Email</th>
+                  <th className="px-4 py-3 text-left font-medium text-gray-700 text-xs uppercase tracking-wider">Téléphone</th>
+                  <th className="px-4 py-3 text-left font-medium text-gray-700 text-xs uppercase tracking-wider">Séjours</th>
+                  <th className="px-4 py-3 text-left font-medium text-gray-700 text-xs uppercase tracking-wider">Dépensé</th>
+                  <th className="px-4 py-3 text-left font-medium text-gray-700 text-xs uppercase tracking-wider">Statut</th>
+                  <th className="px-4 py-3 text-center font-medium text-gray-700 text-xs uppercase tracking-wider">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
                 {filtered.map((contact: ContactClient) => (
-                  <tr key={contact.id} className="hover:bg-gray-50/50 transition-colors group">
+                  <tr key={contact.id} className="hover:bg-gray-50 transition-colors group">
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-2">
                         <div className={`w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-bold ${
@@ -1124,10 +1375,10 @@ const ContactsTab = ({
                         <span className="font-medium text-gray-900">{contact.prenom} {contact.nom}</span>
                       </div>
                     </td>
-                    <td className="px-4 py-3 text-gray-700">{contact.email}</td>
-                    <td className="px-4 py-3 text-gray-700">{contact.telephone}</td>
-                    <td className="px-4 py-3 text-gray-700">{contact.nbSejours}</td>
-                    <td className="px-4 py-3 text-gray-700">{contact.montantTotal}€</td>
+                    <td className="px-4 py-3 text-gray-800">{contact.email}</td>
+                    <td className="px-4 py-3 text-gray-800">{contact.telephone || '—'}</td>
+                    <td className="px-4 py-3 text-gray-800">{contact.nbSejours}</td>
+                    <td className="px-4 py-3 text-gray-800">{contact.montantTotal}€</td>
                     <td className="px-4 py-3"><StatutClientBadge statut={contact.statut} /></td>
                     <td className="px-4 py-3">
                       <div className="flex items-center justify-center gap-1">
@@ -1138,7 +1389,11 @@ const ContactsTab = ({
                         >
                           <Mail size={15} />
                         </button>
-                        <button className="p-1.5 hover:bg-gray-100 rounded-lg transition-colors text-gray-400 hover:text-gray-600" title="Voir les détails">
+                        <button
+                          onClick={() => handleViewClientDetails(contact)}
+                          className="p-1.5 hover:bg-gray-100 rounded-lg transition-colors text-gray-400 hover:text-gray-700"
+                          title="Voir les détails"
+                        >
                           <Eye size={15} />
                         </button>
                       </div>
@@ -1158,6 +1413,163 @@ const ContactsTab = ({
           description={searchTerm || filterStatut !== 'TOUS' ? 'Ajustez vos filtres' : 'Aucun client dans la base'}
         />
       )}
+
+      {/* Modal détails du client */}
+      <Modal
+        isOpen={showClientDetails}
+        onClose={() => {
+          setShowClientDetails(false);
+          setSelectedClientDetails(null);
+          setClientReservations([]);
+        }}
+        title={
+          <div className="flex items-center gap-2">
+            <div className="p-1.5 bg-palmier-100 rounded-lg">
+              <User size={16} className="text-palmier-600" />
+            </div>
+            <span>Détails du client</span>
+            {selectedClientDetails && (
+              <StatutClientBadge statut={selectedClientDetails.statut} />
+            )}
+          </div>
+        }
+        size="lg"
+        footer={
+          <div className="flex justify-end gap-3">
+            <button
+              onClick={() => {
+                setShowClientDetails(false);
+                setSelectedClientDetails(null);
+                setClientReservations([]);
+              }}
+              className="px-4 py-2 text-sm font-medium text-gray-700 border border-gray-300 rounded-xl hover:bg-gray-50 transition-colors"
+            >
+              Fermer
+            </button>
+            {selectedClientDetails && (
+              <button
+                onClick={() => {
+                  onSendToClient(selectedClientDetails.id);
+                  setShowClientDetails(false);
+                }}
+                className="px-4 py-2 text-sm font-medium text-white bg-palmier-600 hover:bg-palmier-700 rounded-xl flex items-center gap-2 transition-all hover:scale-105"
+              >
+                <Send size={15} /> Envoyer un message
+              </button>
+            )}
+          </div>
+        }
+      >
+        {selectedClientDetails && (
+          <div className="space-y-4">
+            {/* Informations du client */}
+            <div className="grid grid-cols-2 gap-3">
+              <div className="bg-gray-50 rounded-xl p-3">
+                <span className="text-xs text-gray-500 uppercase tracking-wide">Nom complet</span>
+                <p className="font-medium text-gray-900 mt-0.5">
+                  {selectedClientDetails.prenom} {selectedClientDetails.nom}
+                </p>
+              </div>
+              <div className="bg-gray-50 rounded-xl p-3">
+                <span className="text-xs text-gray-500 uppercase tracking-wide">Statut</span>
+                <div className="mt-0.5">
+                  <StatutClientBadge statut={selectedClientDetails.statut} />
+                </div>
+              </div>
+              <div className="bg-gray-50 rounded-xl p-3">
+                <span className="text-xs text-gray-500 uppercase tracking-wide">Email</span>
+                <p className="font-medium text-gray-900 mt-0.5 flex items-center gap-1">
+                  <Mail size={14} className="text-gray-400" />
+                  {selectedClientDetails.email}
+                </p>
+              </div>
+              <div className="bg-gray-50 rounded-xl p-3">
+                <span className="text-xs text-gray-500 uppercase tracking-wide">Téléphone</span>
+                <p className="font-medium text-gray-900 mt-0.5 flex items-center gap-1">
+                  <Phone size={14} className="text-gray-400" />
+                  {selectedClientDetails.telephone || 'Non renseigné'}
+                </p>
+              </div>
+              <div className="bg-gray-50 rounded-xl p-3">
+                <span className="text-xs text-gray-500 uppercase tracking-wide">Nombre de séjours</span>
+                <p className="font-medium text-gray-900 mt-0.5">{selectedClientDetails.nbSejours}</p>
+              </div>
+              <div className="bg-gray-50 rounded-xl p-3">
+                <span className="text-xs text-gray-500 uppercase tracking-wide">Dépenses totales</span>
+                <p className="font-medium text-gray-900 mt-0.5 text-emerald-600">{selectedClientDetails.montantTotal}€</p>
+              </div>
+            </div>
+
+            {/* Préférences */}
+            {(selectedClientDetails.preferences?.chambrePreferee || 
+              selectedClientDetails.preferences?.allergies?.length > 0 || 
+              selectedClientDetails.preferences?.regimeAlimentaire) && (
+              <div className="bg-amber-50 rounded-xl p-4 border border-amber-200">
+                <p className="text-xs font-medium text-amber-700 uppercase tracking-wider mb-2">Préférences</p>
+                <div className="grid grid-cols-2 gap-2 text-sm">
+                  {selectedClientDetails.preferences?.chambrePreferee && (
+                    <div><span className="text-gray-500">Chambre préférée:</span> <span className="font-medium">{selectedClientDetails.preferences.chambrePreferee}</span></div>
+                  )}
+                  {selectedClientDetails.preferences?.allergies?.length > 0 && (
+                    <div><span className="text-gray-500">Allergies:</span> <span className="font-medium">{selectedClientDetails.preferences.allergies.join(', ')}</span></div>
+                  )}
+                  {selectedClientDetails.preferences?.regimeAlimentaire && (
+                    <div className="col-span-2"><span className="text-gray-500">Régime:</span> <span className="font-medium">{selectedClientDetails.preferences.regimeAlimentaire}</span></div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Historique des réservations */}
+            <div>
+              <h4 className="text-sm font-semibold text-gray-700 flex items-center gap-2 mb-2">
+                <Calendar size={14} className="text-palmier-500" />
+                Historique des séjours
+                <span className="text-xs text-gray-400 font-normal">
+                  ({clientReservations.length} réservation{clientReservations.length > 1 ? 's' : ''})
+                </span>
+              </h4>
+              {loadingDetails ? (
+                <div className="flex justify-center py-4">
+                  <Loader2 size={20} className="animate-spin text-palmier-500" />
+                </div>
+              ) : clientReservations.length === 0 ? (
+                <div className="text-center py-4 text-gray-400 text-sm">
+                  Aucune réservation trouvée pour ce client
+                </div>
+              ) : (
+                <div className="space-y-2 max-h-60 overflow-y-auto">
+                  {clientReservations.map((r: any) => (
+                    <div key={r.id} className="flex items-center justify-between text-sm p-3 bg-gray-50 rounded-xl border border-gray-100">
+                      <div>
+                        <span className="font-medium text-gray-900">{r.chambre_nom || r.chambre?.nom || 'Chambre'}</span>
+                        <span className="text-gray-400 mx-2">•</span>
+                        <span className="text-gray-600">
+                          {r.dateArrivee ? new Date(r.dateArrivee).toLocaleDateString('fr-FR') : '—'} 
+                          → {r.dateDepart ? new Date(r.dateDepart).toLocaleDateString('fr-FR') : '—'}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <span className="font-semibold text-emerald-600">
+                          {r.montantTotal ? `${Number(r.montantTotal).toFixed(0)}€` : '—'}
+                        </span>
+                        <span className={`text-xs px-2.5 py-0.5 rounded-full font-medium ${
+                          r.statut === 'TERMINEE' ? 'bg-emerald-100 text-emerald-700' :
+                          r.statut === 'CONFIRMEE' ? 'bg-blue-100 text-blue-700' :
+                          r.statut === 'ANNULEE' ? 'bg-red-100 text-red-700' :
+                          'bg-gray-100 text-gray-600'
+                        }`}>
+                          {r.statut || '—'}
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+      </Modal>
     </div>
   );
 };
@@ -1174,7 +1586,7 @@ const CommunicationPage: React.FC = () => {
   const [contacts, setContacts] = useState<ContactClient[]>([]);
   const [stats, setStats] = useState<CommunicationStats | null>(null);
 
-  // ─── ÉTATS NOUVEAU MESSAGE ───
+  // États nouveau message
   const [showNewMessageModal, setShowNewMessageModal] = useState(false);
   const [newMessageForm, setNewMessageForm] = useState({
     clientId: '',
@@ -1190,16 +1602,20 @@ const CommunicationPage: React.FC = () => {
   const [clientSearchResults, setClientSearchResults] = useState<ContactClient[]>([]);
   const [showClientDropdown, setShowClientDropdown] = useState(false);
 
-  const tabs = useMemo(() => [
-    { id: 'messages', label: 'Messages', icon: <Inbox size={18} />, count: messages.length },
-    { id: 'modeles', label: 'Modèles', icon: <FileText size={18} />, count: modeles.length },
-    { id: 'contacts', label: 'Contacts', icon: <Users size={18} />, count: contacts.length },
-  ], [messages.length, modeles.length, contacts.length]);
+  const tabs = useMemo(() => {
+    return [
+      { id: 'messages', label: 'Messages', icon: <Inbox size={18} />, count: messages.length },
+      { id: 'modeles', label: 'Modèles', icon: <FileText size={18} />, count: modeles.length },
+      { id: 'contacts', label: 'Contacts', icon: <Users size={18} />, count: contacts.length },
+    ];
+  }, [messages.length, modeles.length, contacts.length]);
 
-  // ─── CHARGEMENT DES DONNÉES ───
+  // Chargement des données
   const loadData = useCallback(async () => {
     setLoading(true);
     try {
+      console.log('[CommunicationPage] Chargement des données...');
+      
       const [messagesRes, modelesRes, statsRes, contactsRes] = await Promise.all([
         communicationService.getHistorique(),
         communicationService.getModeles(),
@@ -1207,8 +1623,17 @@ const CommunicationPage: React.FC = () => {
         clientService.getAll({ limit: 100 })
       ]);
 
+      console.log('[CommunicationPage] Réponses API:', {
+        messages: messagesRes.success ? `${messagesRes.data?.length || 0} messages` : 'échec',
+        modeles: modelesRes.success ? `${modelesRes.data?.length || 0} modèles` : 'échec',
+        stats: statsRes.success ? statsRes.data : 'échec',
+        contacts: contactsRes.success ? `${contactsRes.data?.length || 0} contacts` : 'échec'
+      });
+
       if (messagesRes.success && messagesRes.data) {
         setMessages(messagesRes.data);
+      } else {
+        setMessages([]);
       }
 
       if (modelesRes.success && modelesRes.data) {
@@ -1219,9 +1644,12 @@ const CommunicationPage: React.FC = () => {
 
       if (statsRes.success && statsRes.data) {
         setStats(statsRes.data);
+      } else {
+        setStats(null);
       }
 
       if (contactsRes.success && contactsRes.data) {
+        // Transformer les données des contacts
         const transformedContacts: ContactClient[] = contactsRes.data.map((c: any) => ({
           id: c.id,
           nom: c.nom,
@@ -1245,7 +1673,7 @@ const CommunicationPage: React.FC = () => {
         setContacts([]);
       }
     } catch (error) {
-      console.error('Erreur chargement données:', error);
+      console.error('[CommunicationPage] Erreur lors du chargement des données:', error);
       notifyAjout('error', 'Erreur', 'Erreur lors du chargement des données');
     } finally {
       setLoading(false);
@@ -1256,14 +1684,14 @@ const CommunicationPage: React.FC = () => {
     loadData();
   }, [loadData]);
 
-  // ─── RECHERCHE DE CLIENTS ───
+  // Recherche de clients
   const searchClients = useCallback(async (query: string) => {
     if (query.length < 2) {
       setClientSearchResults([]);
       return;
     }
     try {
-      const res = await clientService.getAll({ search: query, limit: 10 });
+      const res = await clientService.search(query);
       if (res.success && res.data) {
         const transformed = res.data.map((c: any) => ({
           id: c.id,
@@ -1287,7 +1715,7 @@ const CommunicationPage: React.FC = () => {
         setShowClientDropdown(true);
       }
     } catch (error) {
-      console.error('Erreur recherche clients:', error);
+      console.error('[CommunicationPage] Erreur recherche clients:', error);
     }
   }, []);
 
@@ -1300,7 +1728,7 @@ const CommunicationPage: React.FC = () => {
     return () => clearTimeout(delayDebounce);
   }, [clientSearch, searchClients]);
 
-  // ─── SÉLECTION D'UN CLIENT ───
+  // Sélection d'un client
   const selectClient = (client: ContactClient) => {
     setSelectedClient(client);
     setNewMessageForm(prev => ({ ...prev, clientId: String(client.id) }));
@@ -1308,7 +1736,7 @@ const CommunicationPage: React.FC = () => {
     setShowClientDropdown(false);
   };
 
-  // ─── APPLICATION D'UN MODÈLE ───
+  // Application d'un modèle
   const applyModele = (modeleId: string) => {
     const modele = modeles.find(m => m.id === parseInt(modeleId));
     if (modele) {
@@ -1323,7 +1751,7 @@ const CommunicationPage: React.FC = () => {
     }
   };
 
-  // ─── ENVOI DU MESSAGE ───
+  // Envoi du message
   const handleSendNewMessage = async () => {
     if (!newMessageForm.clientId || !newMessageForm.sujet || !newMessageForm.corps) {
       notifyAjout('error', 'Erreur', 'Veuillez remplir tous les champs obligatoires');
@@ -1332,14 +1760,16 @@ const CommunicationPage: React.FC = () => {
 
     setSendingMessage(true);
     try {
-      const response = await communicationService.envoyerEmail({
+      const payload = {
         clientId: parseInt(newMessageForm.clientId),
         reservationId: newMessageForm.reservationId ? parseInt(newMessageForm.reservationId) : undefined,
         messageId: newMessageForm.modeleId ? parseInt(newMessageForm.modeleId) : undefined,
         type: newMessageForm.type,
         sujet: newMessageForm.sujet,
         corps: newMessageForm.corps
-      });
+      };
+
+      const response = await communicationService.envoyerEmail(payload);
 
       if (response.success) {
         notifyAjout('success', 'Message envoyé', 'Le message a été envoyé avec succès');
@@ -1352,15 +1782,14 @@ const CommunicationPage: React.FC = () => {
         notifyAjout('error', 'Erreur', response.message || 'Erreur lors de l\'envoi du message');
       }
     } catch (error) {
-      console.error('Erreur envoi message:', error);
+      console.error('[CommunicationPage] Erreur lors de l\'envoi du message:', error);
       notifyAjout('error', 'Erreur', 'Erreur lors de l\'envoi du message');
     } finally {
       setSendingMessage(false);
     }
   };
 
-  // ─── ACTIONS ───
-
+  // Actions
   const handleSendMessage = () => {
     setShowNewMessageModal(true);
   };
@@ -1385,24 +1814,39 @@ const CommunicationPage: React.FC = () => {
         notifyAjout('error', 'Erreur', response.message || 'Erreur lors de l\'envoi groupé');
       }
     } catch (error) {
-      console.error('Erreur envoi groupé:', error);
+      console.error('[CommunicationPage] Erreur lors de l\'envoi groupé:', error);
       notifyAjout('error', 'Erreur', 'Erreur lors de l\'envoi groupé');
     }
   };
 
+  const handleViewClientDetails = (clientId: number) => {
+    // Cette fonction est maintenant gérée dans le composant ContactsTab
+    console.log('[CommunicationPage] Voir les détails du client:', clientId);
+  };
+
   const handleUpdateModele = async (modele: ModeleMessage) => {
-    const response = await communicationService.updateModele(modele.id, modele);
-    if (response.success) {
-      await loadData();
-    } else {
-      throw new Error('Erreur lors de la mise à jour');
+    try {
+      const response = await communicationService.updateModele(modele.id, modele);
+      if (response.success) {
+        await loadData();
+      } else {
+        throw new Error('Erreur lors de la mise à jour');
+      }
+    } catch (error) {
+      console.error('[CommunicationPage] Erreur mise à jour modèle:', error);
+      throw error;
     }
   };
 
   const handleValidateModele = async (id: number) => {
-    const response = await communicationService.validerModele(id);
-    if (!response.success) {
-      throw new Error('Erreur lors de la validation');
+    try {
+      const response = await communicationService.validerModele(id);
+      if (!response.success) {
+        throw new Error('Erreur lors de la validation');
+      }
+    } catch (error) {
+      console.error('[CommunicationPage] Erreur validation modèle:', error);
+      throw error;
     }
   };
 
@@ -1415,36 +1859,15 @@ const CommunicationPage: React.FC = () => {
       } else {
         notifyAjout('error', 'Erreur', response.message || 'Erreur lors du réessai');
       }
-    } catch {
+    } catch (error) {
+      console.error('[CommunicationPage] Erreur lors du réessai:', error);
       notifyAjout('error', 'Erreur', 'Erreur lors du réessai');
     }
   };
 
   const handleCreateModele = async () => {
-    try {
-      const newModele: Omit<ModeleMessage, 'id'> = {
-        nom: 'Nouveau modèle',
-        type: 'MANUEL',
-        sujet: 'Sujet du modèle',
-        corps: 'Corps du modèle...',
-        variables: [],
-        dateModification: new Date(),
-        valide: false,
-        validePar: undefined,
-        creePar: 1,
-        dateCreation: new Date()
-      };
-      const response = await communicationService.createModele(newModele);
-      if (response.success) {
-        notifyAjout('success', 'Modèle créé', 'Le modèle a été créé avec succès');
-        await loadData();
-      } else {
-        notifyAjout('error', 'Erreur', response.message || 'Erreur lors de la création');
-      }
-    } catch (error) {
-      console.error('Erreur création modèle:', error);
-      notifyAjout('error', 'Erreur', 'Erreur lors de la création du modèle');
-    }
+    // Cette fonction est maintenant gérée dans le composant ModelesTab
+    await loadData();
   };
 
   const handleDeleteModele = async (id: number) => {
@@ -1456,7 +1879,8 @@ const CommunicationPage: React.FC = () => {
       } else {
         notifyAjout('error', 'Erreur', response.message || 'Erreur lors de la suppression');
       }
-    } catch {
+    } catch (error) {
+      console.error('[CommunicationPage] Erreur lors de la suppression du modèle:', error);
       notifyAjout('error', 'Erreur', 'Erreur lors de la suppression');
     }
   };
@@ -1470,34 +1894,27 @@ const CommunicationPage: React.FC = () => {
       } else {
         notifyAjout('error', 'Erreur', response.message || 'Erreur lors de la suppression');
       }
-    } catch {
+    } catch (error) {
+      console.error('[CommunicationPage] Erreur lors de la suppression du message:', error);
       notifyAjout('error', 'Erreur', 'Erreur lors de la suppression');
     }
   };
 
   return (
-    <div className="min-h-screen bg-gray-50/60 p-4 lg:p-6 space-y-5">
+    <div className="min-h-screen bg-gray-50 p-4 lg:p-6 space-y-5">
+      {/* En-tête */}
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-        <div>
-          <div className="flex items-center gap-3">
-            <div className="p-2.5 bg-gradient-to-br from-palmier-100 to-palmier-200 rounded-xl">
-              <MessageSquare size={24} className="text-palmier-600" />
-            </div>
-            <div>
-              <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
-                Communication
-                <span className="text-xs font-normal bg-gray-100 text-gray-500 px-2 py-0.5 rounded-full">
-                  {messages.length + modeles.length + contacts.length} éléments
-                </span>
-              </h1>
-              <p className="text-sm text-gray-500 mt-0.5 flex items-center gap-2 flex-wrap">
-                Historique des envois · Modèles de messages · Contacts clients
-                <span className="text-xs bg-palmier-50 text-palmier-600 px-2 py-0.5 rounded-full flex items-center gap-1">
-                  <Sparkles size={10} />
-                  RG6 - Modèles validés par la gérante
-                </span>
-              </p>
-            </div>
+        <div className="flex items-center gap-3">
+          <div className="p-2.5 bg-gradient-to-br from-palmier-100 to-palmier-200 rounded-xl">
+            <MessageSquare size={24} className="text-palmier-600" />
+          </div>
+          <div>
+            <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
+              Communication
+              <span className="text-xs font-normal bg-gray-200 text-gray-600 px-2 py-0.5 rounded-full">
+                {messages.length + modeles.length + contacts.length} éléments
+              </span>
+            </h1>
           </div>
         </div>
         <button
@@ -1512,8 +1929,9 @@ const CommunicationPage: React.FC = () => {
 
       <QuickStats stats={stats} loading={loading} />
 
+      {/* Onglets */}
       <div className="bg-white rounded-xl border border-gray-200 overflow-hidden shadow-sm">
-        <div className="border-b border-gray-200 px-2 bg-gray-50/50">
+        <div className="border-b border-gray-200 px-2 bg-gray-50">
           <nav className="flex space-x-1" aria-label="Tabs">
             {tabs.map((tab) => (
               <button
@@ -1533,7 +1951,7 @@ const CommunicationPage: React.FC = () => {
                   ml-1 px-2 py-0.5 text-xs rounded-full
                   ${activeTab === tab.id
                     ? 'bg-palmier-100 text-palmier-700'
-                    : 'bg-gray-100 text-gray-500'
+                    : 'bg-gray-200 text-gray-600'
                   }
                 `}>
                   {tab.count}
@@ -1572,15 +1990,20 @@ const CommunicationPage: React.FC = () => {
               onRefresh={loadData}
               onSendToClient={handleSendToClient}
               onSendGroupe={handleSendGroupe}
+              onViewClientDetails={handleViewClientDetails}
             />
           )}
         </div>
       </div>
 
-      {/* ─── MODALE NOUVEAU MESSAGE ─── */}
+      {/* Modal nouveau message */}
       <Modal
         isOpen={showNewMessageModal}
-        onClose={() => { setShowNewMessageModal(false); setSelectedClient(null); setClientSearch(''); }}
+        onClose={() => {
+          setShowNewMessageModal(false);
+          setSelectedClient(null);
+          setClientSearch('');
+        }}
         title={
           <div className="flex items-center gap-2">
             <div className="p-1.5 bg-palmier-100 rounded-lg">
@@ -1593,8 +2016,12 @@ const CommunicationPage: React.FC = () => {
         footer={
           <div className="flex gap-3 justify-end">
             <button
-              onClick={() => { setShowNewMessageModal(false); setSelectedClient(null); setClientSearch(''); }}
-              className="px-4 py-2.5 text-sm font-medium text-gray-700 border border-gray-200 rounded-xl hover:bg-gray-50 transition-colors"
+              onClick={() => {
+                setShowNewMessageModal(false);
+                setSelectedClient(null);
+                setClientSearch('');
+              }}
+              className="px-4 py-2.5 text-sm font-medium text-gray-700 border border-gray-300 rounded-xl hover:bg-gray-50 transition-colors"
             >
               Annuler
             </button>
@@ -1627,13 +2054,19 @@ const CommunicationPage: React.FC = () => {
                     placeholder="Rechercher un client..."
                     value={clientSearch}
                     onChange={(e) => setClientSearch(e.target.value)}
-                    onFocus={() => clientSearch.length >= 2 && setShowClientDropdown(true)}
-                    className="w-full pl-10 pr-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-palmier-500 text-gray-900 placeholder-gray-400"
+                    onFocus={() => {
+                      if (clientSearch.length >= 2) setShowClientDropdown(true);
+                    }}
+                    className="w-full pl-10 pr-4 py-2.5 border border-gray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-palmier-500 text-gray-900 placeholder-gray-400 bg-white"
                   />
                 </div>
                 {selectedClient && (
                   <button
-                    onClick={() => { setSelectedClient(null); setClientSearch(''); setNewMessageForm(prev => ({ ...prev, clientId: '' })); }}
+                    onClick={() => {
+                      setSelectedClient(null);
+                      setClientSearch('');
+                      setNewMessageForm(prev => ({ ...prev, clientId: '' }));
+                    }}
                     className="px-3 py-2.5 text-sm text-red-600 hover:bg-red-50 rounded-xl border border-red-200 transition-colors"
                   >
                     <X size={16} />
@@ -1677,7 +2110,7 @@ const CommunicationPage: React.FC = () => {
             <select
               value={newMessageForm.modeleId}
               onChange={(e) => applyModele(e.target.value)}
-              className="w-full px-3.5 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-palmier-500 text-gray-700 bg-white"
+              className="w-full px-3.5 py-2.5 border border-gray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-palmier-500 text-gray-700 bg-white"
             >
               <option value="">Sélectionner un modèle</option>
               {modeles.filter((m) => m.valide).map((m) => (
@@ -1702,7 +2135,7 @@ const CommunicationPage: React.FC = () => {
             <select
               value={newMessageForm.type}
               onChange={(e) => setNewMessageForm((prev) => ({ ...prev, type: e.target.value as TypeMessage }))}
-              className="w-full px-3.5 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-palmier-500 text-gray-700 bg-white"
+              className="w-full px-3.5 py-2.5 border border-gray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-palmier-500 text-gray-700 bg-white"
             >
               {Object.keys(TYPE_LABELS).map((key) => (
                 <option key={key} value={key}>
@@ -1720,7 +2153,7 @@ const CommunicationPage: React.FC = () => {
               value={newMessageForm.sujet}
               onChange={(e) => setNewMessageForm((prev) => ({ ...prev, sujet: e.target.value }))}
               placeholder="Sujet du message..."
-              className="w-full px-3.5 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-palmier-500 text-gray-900 placeholder-gray-400"
+              className="w-full px-3.5 py-2.5 border border-gray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-palmier-500 text-gray-900 placeholder-gray-400 bg-white"
             />
           </div>
 
@@ -1732,7 +2165,7 @@ const CommunicationPage: React.FC = () => {
               onChange={(e) => setNewMessageForm((prev) => ({ ...prev, corps: e.target.value }))}
               rows={8}
               placeholder="Écrivez votre message ici..."
-              className="w-full px-3.5 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-palmier-500 text-gray-900 placeholder-gray-400 resize-none"
+              className="w-full px-3.5 py-2.5 border border-gray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-palmier-500 text-gray-900 placeholder-gray-400 bg-white resize-none"
             />
             <div className="mt-1 text-xs text-gray-400 flex items-center gap-2 flex-wrap">
               <Tag size={12} />
@@ -1747,7 +2180,7 @@ const CommunicationPage: React.FC = () => {
             </div>
           </div>
 
-          {/* Numéro de réservation (optionnel) */}
+          {/* Numéro de réservation */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1.5">N° de réservation (optionnel)</label>
             <input
@@ -1755,7 +2188,7 @@ const CommunicationPage: React.FC = () => {
               value={newMessageForm.reservationId}
               onChange={(e) => setNewMessageForm((prev) => ({ ...prev, reservationId: e.target.value }))}
               placeholder="Ex: RES-0001"
-              className="w-full px-3.5 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-palmier-500 text-gray-900 placeholder-gray-400"
+              className="w-full px-3.5 py-2.5 border border-gray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-palmier-500 text-gray-900 placeholder-gray-400 bg-white"
             />
           </div>
         </div>
@@ -1768,6 +2201,16 @@ const CommunicationPage: React.FC = () => {
         }
         .animate-slide-up {
           animation: slideUp 0.4s ease-out forwards;
+        }
+        input, select, textarea {
+          color: #1a1a1a !important;
+        }
+        input::placeholder, textarea::placeholder {
+          color: #9ca3af !important;
+        }
+        select option {
+          color: #1a1a1a !important;
+          background: white !important;
         }
       `}</style>
     </div>

@@ -13,11 +13,15 @@ import {
   AlertTriangle,
   ChevronRight,
   Calendar,
+  Bike,
+  Plane,
+  Activity,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useNotifications } from '../../hooks/useNotifications';
 import { NotificationApi, GraviteNotification } from '../../services/api';
+import { useWebSocketContext } from '../../context/WebSocketContext';
 
 interface HeaderProps {
   isSidebarCollapsed: boolean;
@@ -61,12 +65,33 @@ const GRAVITE_LABELS: Record<GraviteNotification, string> = {
   error: 'Erreur',
 };
 
+// ✅ Élargi avec les types de services annexes
 const TYPE_EMOJIS: Record<string, string> = {
+  // Paiements & réservations
   ACOMPTE_MANQUANT: '⚠️',
   CONFIRMATION_ATTENTE: '⏳',
   IMPAYE: '💳',
   ARRIVEE_JOUR: '🏠',
   CHECKIN_RETARDE: '🕐',
+  // ✅ Services annexes - Vélos
+  VELO_CREATED: '🚲',
+  VELO_UPDATED: '🔧',
+  VELO_DELETED: '🗑️',
+  VELO_STATUS_CHANGED: '🔄',
+  LOCATION_CREATED: '📋',
+  LOCATION_TERMINEE: '✅',
+  // ✅ Services annexes - Transferts
+  TRANSFERT_CREATED: '✈️',
+  TRANSFERT_UPDATED: '📝',
+  TRANSFERT_DELETED: '🗑️',
+  // ✅ Services annexes - Activités
+  ACTIVITE_CREATED: '🏔️',
+  ACTIVITE_UPDATED: '📝',
+  ACTIVITE_DELETED: '🗑️',
+  RESERVATION_ACTIVITE_CREATED: '📋',
+  // ✅ Services annexes - Général
+  SERVICE_ANNEXE_UPDATED: '📢',
+  REFRESH_SERVICES: '🔄',
 };
 
 const REFRESH_INTERVAL_MS = 30_000;
@@ -229,6 +254,7 @@ function useClickOutside<T extends HTMLElement>(isActive: boolean, onOutsideClic
 // Hook: détecte les nouvelles notifications pour afficher un toast
 // ✅ CORRECTION : Les toasts disparaissent immédiatement et 
 // ne réapparaissent pas après un refresh
+// ✅ AJOUT : Support des notifications de services annexes
 // ============================================================
 
 function useNewNotificationToasts(notifications: NotificationApi[], isPanelOpen: boolean) {
@@ -297,11 +323,9 @@ function useNewNotificationToasts(notifications: NotificationApi[], isPanelOpen:
   }, []);
 
   const dismiss = useCallback((id: string) => {
-    setToasts((prev) => {
-      // Marquer comme vu pour ne pas réapparaître
-      seenIdsRef.current.add(id);
-      return prev.filter((t) => t.id !== id);
-    });
+    // Marquer comme vu pour ne pas réapparaître
+    seenIdsRef.current.add(id);
+    setToasts((prev) => prev.filter((t) => t.id !== id));
   }, []);
 
   return { toasts, dismiss, dismissAll };
@@ -368,6 +392,9 @@ function NotificationBellButton({
 
 function NotificationRow({ notification, onSelect }: { notification: NotificationApi; onSelect: (n: NotificationApi) => void }) {
   const style = GRAVITE_STYLES[notification.gravite];
+  // ✅ Afficher l'icône du type de service annexe si disponible
+  const emoji = TYPE_EMOJIS[notification.type] ?? '📢';
+  
   return (
     <button
       onClick={() => onSelect(notification)}
@@ -384,7 +411,7 @@ function NotificationRow({ notification, onSelect }: { notification: Notificatio
         <div className="min-w-0 flex-1">
           <div className="flex items-start justify-between gap-2">
             <span className="text-sm font-medium text-gray-900 truncate">
-              {TYPE_EMOJIS[notification.type] ?? '📢'} {notification.titre}
+              {emoji} {notification.titre}
             </span>
             <span className="shrink-0 text-[10px] text-gray-500">{formatRelativeDate(notification.createdAt)}</span>
           </div>
@@ -600,16 +627,26 @@ function NotificationDetailModal({
   onViewReservation: (reservationId: string) => void;
 }) {
   const style = GRAVITE_STYLES[notification.gravite];
+  const emoji = TYPE_EMOJIS[notification.type] ?? '📢';
+
+  // ✅ Icône spécifique pour les services annexes
+  const getTypeIcon = () => {
+    if (notification.type?.includes('VELO')) return <Bike size={16} className="text-amber-500" />;
+    if (notification.type?.includes('TRANSFERT')) return <Plane size={16} className="text-blue-500" />;
+    if (notification.type?.includes('ACTIVITE')) return <Activity size={16} className="text-green-500" />;
+    return GRAVITE_ICONS[notification.gravite];
+  };
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm animate-fadeIn">
       <div className="w-full max-w-md overflow-hidden rounded-2xl bg-white shadow-2xl animate-slideUp">
         <div className={`flex items-center justify-between bg-gradient-to-r px-6 py-5 ${style.header}`}>
           <div className="flex items-center gap-3 text-white">
-            <div className="rounded-xl bg-white/20 p-2">{GRAVITE_ICONS[notification.gravite]}</div>
+            <div className="rounded-xl bg-white/20 p-2">{getTypeIcon()}</div>
             <div>
               <h3 className="text-lg font-semibold">{notification.titre}</h3>
               <p className="text-xs text-white/80">
-                {TYPE_EMOJIS[notification.type] ?? '📢'} {notification.type}
+                {emoji} {notification.type}
               </p>
             </div>
           </div>
@@ -689,6 +726,7 @@ function NotificationToast({
   onOpen: (n: NotificationApi) => void;
 }) {
   const style = GRAVITE_STYLES[notification.gravite];
+  const emoji = TYPE_EMOJIS[notification.type] ?? '📢';
 
   // ✅ Auto-dismiss après TOAST_DURATION_MS (30ms)
   useEffect(() => {
@@ -704,10 +742,12 @@ function NotificationToast({
       role="status"
       className={`flex items-start gap-3 rounded-xl border-l-4 bg-white p-3.5 shadow-2xl border border-gray-200/70 animate-toastIn ${style.border}`}
     >
-      <div className={`mt-0.5 shrink-0 rounded-lg p-1.5 ${style.badge}`}>{GRAVITE_ICONS[notification.gravite]}</div>
+      <div className={`mt-0.5 shrink-0 rounded-lg p-1.5 ${style.badge}`}>
+        {GRAVITE_ICONS[notification.gravite]}
+      </div>
       <button onClick={() => onOpen(notification)} className="min-w-0 flex-1 text-left">
         <p className="truncate text-sm font-medium text-gray-900">
-          {TYPE_EMOJIS[notification.type] ?? '📢'} {notification.titre}
+          {emoji} {notification.titre}
         </p>
         <p className="mt-0.5 line-clamp-2 text-xs text-gray-600">{notification.message}</p>
       </button>
@@ -729,6 +769,8 @@ function NotificationToast({
 export const Header = ({ isSidebarCollapsed }: HeaderProps) => {
   const navigate = useNavigate();
   const location = useLocation();
+  const { user } = useAuth();
+  const { isConnected } = useWebSocketContext();
 
   const networkStatus = useNetworkStatus();
   const { notifications, nonLues, isLoading, marquerLue, marquerToutesLues, forceRefresh } = useNotifications();
@@ -743,6 +785,26 @@ export const Header = ({ isSidebarCollapsed }: HeaderProps) => {
     () => new Date().toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }),
     [],
   );
+
+  // ✅ Écouter les événements WebSocket pour les services annexes
+  useEffect(() => {
+    const handleRefreshServices = (event: CustomEvent) => {
+      console.log('[Header] Refresh services via WebSocket:', event.detail);
+      forceRefresh();
+    };
+
+    window.addEventListener('refresh-services', handleRefreshServices as EventListener);
+    window.addEventListener('SERVICE_ANNEXE_UPDATED', handleRefreshServices as EventListener);
+    window.addEventListener('VELO_STATUS_CHANGED', handleRefreshServices as EventListener);
+    window.addEventListener('REFRESH_SERVICES', handleRefreshServices as EventListener);
+
+    return () => {
+      window.removeEventListener('refresh-services', handleRefreshServices as EventListener);
+      window.removeEventListener('SERVICE_ANNEXE_UPDATED', handleRefreshServices as EventListener);
+      window.removeEventListener('VELO_STATUS_CHANGED', handleRefreshServices as EventListener);
+      window.removeEventListener('REFRESH_SERVICES', handleRefreshServices as EventListener);
+    };
+  }, [forceRefresh]);
 
   const handleSelectNotification = (notification: NotificationApi) => {
     if (!notification.lu) marquerLue(notification.id);
@@ -774,6 +836,14 @@ export const Header = ({ isSidebarCollapsed }: HeaderProps) => {
           </div>
 
           <div className="flex items-center gap-2 sm:gap-4">
+            {/* ✅ Indicateur de connexion WebSocket */}
+            <div className="hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-gray-50 border border-gray-200">
+              <span className={`w-2 h-2 rounded-full ${isConnected ? 'bg-emerald-500 animate-pulse' : 'bg-red-500'}`} />
+              <span className="text-[10px] font-medium text-gray-600">
+                {isConnected ? 'Temps réel' : 'Hors ligne'}
+              </span>
+            </div>
+
             <NetworkStatusBadge status={networkStatus} />
 
             <div ref={notificationAreaRef} className="relative">

@@ -389,15 +389,31 @@ export const clientService = {
   },
 
   /**
-   * Rechercher des clients (avec validation)
+   * Rechercher des clients (avec validation et nettoyage)
    */
   async search(query: string) {
-    // Si la requête est vide ou trop courte, retourner un tableau vide
-    if (!query || query.trim().length < 2) {
+    // ✅ Nettoyer la requête avant de l'envoyer
+    if (!query || typeof query !== 'string') {
       return { success: true, data: [] };
     }
-    const response = await api.get('/clients/search', { params: { q: query } });
-    return response.data;
+    
+    const cleanQuery = query.trim();
+    
+    // Si la requête est vide ou trop courte, retourner un tableau vide
+    if (cleanQuery.length < 2) {
+      return { success: true, data: [] };
+    }
+    
+    try {
+      // ✅ Encoder correctement la requête pour éviter les caractères spéciaux
+      const response = await api.get('/clients/search', { 
+        params: { q: cleanQuery } 
+      });
+      return response.data;
+    } catch (error) {
+      console.error('[clientService.search] Erreur:', error);
+      return { success: false, data: [] };
+    }
   }
 };
 
@@ -498,6 +514,223 @@ export const paiementService = {
    */
   async envoyerRelance(reservationId: number) {
     const response = await api.post(`/paiements/${reservationId}/relance`);
+    return response.data;
+  }
+};
+
+// ============================================
+// SERVICES - SERVICES ANNEXES (§3.5) ✅ AJOUTÉ
+// ============================================
+
+export const servicesAnnexesService = {
+  // ─── VÉLOS (§3.5.1) ───
+
+  /**
+   * Récupérer tous les vélos
+   */
+  async getVelos() {
+    const response = await api.get('/services-annexes/velos');
+    return response.data;
+  },
+
+  /**
+   * Récupérer les vélos disponibles
+   */
+  async getVelosDisponibles(dateDebut?: string, dateFin?: string) {
+    const response = await api.get('/services-annexes/velos/disponibles', {
+      params: { dateDebut, dateFin }
+    });
+    return response.data;
+  },
+
+  /**
+   * Récupérer les locations en cours
+   */
+  async getLocationsEnCours() {
+    const response = await api.get('/services-annexes/velos/locations-en-cours');
+    return response.data;
+  },
+
+  /**
+   * Créer un nouveau vélo
+   */
+  async createVelo(data: {
+    type: string;
+    taille?: string;
+    etat: string;
+    prix: number;
+    numeroSerie?: string;
+    disponible?: boolean;
+  }) {
+    const response = await api.post('/services-annexes/velos', data);
+    return response.data;
+  },
+
+  /**
+   * Mettre à jour un vélo
+   */
+  async updateVelo(id: number, data: any) {
+    const response = await api.put(`/services-annexes/velos/${id}`, data);
+    return response.data;
+  },
+
+  /**
+   * Supprimer un vélo
+   */
+  async deleteVelo(id: number) {
+    const response = await api.delete(`/services-annexes/velos/${id}`);
+    return response.data;
+  },
+
+  /**
+   * Créer une location de vélo
+   */
+  async createLocationVelo(data: {
+    clientId?: number;
+    reservationId?: number;
+    veloId: number;
+    dateDebut: string;
+    dateFin: string;
+    typeTarification?: string;
+    montant?: number;
+  }) {
+    const response = await api.post('/services-annexes/velos/reserver', data);
+    return response.data;
+  },
+
+  /**
+   * Terminer une location de vélo
+   */
+  async terminerLocationVelo(id: number) {
+    const response = await api.put(`/services-annexes/velos/location/${id}/terminer`);
+    return response.data;
+  },
+
+  // ─── TRANSFERTS (§3.5.2) ───
+
+  /**
+   * Récupérer tous les transferts
+   */
+  async getTransferts(statut?: string) {
+    const response = await api.get('/services-annexes/transferts', {
+      params: { statut }
+    });
+    return response.data;
+  },
+
+  /**
+   * Récupérer l'historique des transferts
+   */
+  async getHistoriqueTransferts() {
+    const response = await api.get('/services-annexes/transferts/historique');
+    return response.data;
+  },
+
+  /**
+   * Créer un nouveau transfert
+   */
+  async createTransfert(data: any) {
+    const response = await api.post('/services-annexes/transferts', data);
+    return response.data;
+  },
+
+  /**
+   * Mettre à jour un transfert
+   */
+  async updateTransfert(id: number, data: any) {
+    const response = await api.put(`/services-annexes/transferts/${id}`, data);
+    return response.data;
+  },
+
+  /**
+   * Supprimer un transfert
+   */
+  async deleteTransfert(id: number) {
+    const response = await api.delete(`/services-annexes/transferts/${id}`);
+    return response.data;
+  },
+
+  // ─── ACTIVITÉS (§3.5.3) ───
+
+  /**
+   * Récupérer le catalogue des activités
+   */
+  async getActivites() {
+    const response = await api.get('/services-annexes/activites/catalogue');
+    return response.data;
+  },
+
+  /**
+   * Récupérer les commissions
+   */
+  async getCommissions(dateDebut?: string, dateFin?: string) {
+    const response = await api.get('/services-annexes/activites/commissions', {
+      params: { dateDebut, dateFin }
+    });
+    return response.data;
+  },
+
+  /**
+   * Récupérer les réservations externes
+   */
+  async getReservationsExternes() {
+    const response = await api.get('/services-annexes/activites/reservations-externes');
+    return response.data;
+  },
+
+  /**
+   * Créer une nouvelle activité
+   */
+  async createActivite(data: any) {
+    const response = await api.post('/services-annexes/activites', data);
+    return response.data;
+  },
+
+  /**
+   * Mettre à jour une activité
+   */
+  async updateActivite(id: number, data: any) {
+    const response = await api.put(`/services-annexes/activites/${id}`, data);
+    return response.data;
+  },
+
+  /**
+   * Supprimer une activité
+   */
+  async deleteActivite(id: number) {
+    const response = await api.delete(`/services-annexes/activites/${id}`);
+    return response.data;
+  },
+
+  /**
+   * Créer une réservation d'activité
+   */
+  async createReservationActivite(data: {
+    reservationId?: number;
+    activiteId: number;
+    dateActivite: string;
+    nbParticipants?: number;
+    montantPaye?: number;
+  }) {
+    const response = await api.post('/services-annexes/activites/reserver', data);
+    return response.data;
+  },
+
+  // ─── PARTENAIRES ───
+
+  /**
+   * Récupérer tous les partenaires
+   */
+  async getPartenaires() {
+    const response = await api.get('/services-annexes/partenaires');
+    return response.data;
+  },
+
+  /**
+   * Créer un nouveau partenaire
+   */
+  async createPartenaire(data: any) {
+    const response = await api.post('/services-annexes/partenaires', data);
     return response.data;
   }
 };

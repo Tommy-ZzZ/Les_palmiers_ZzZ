@@ -15,14 +15,28 @@ export class EmailService {
     const user = process.env.SMTP_USER;
     const pass = process.env.SMTP_PASS;
 
-    // ✅ Vérification des credentials (corrigée : condition simplifiée et
-    // comparaison insensible à la casse pour détecter les placeholders)
+    console.log('📧 [EmailService] Configuration SMTP:');
+    console.log(`  Host: ${host}`);
+    console.log(`  User: ${user ? user.substring(0, 10) + '...' : 'non défini'}`);
+    console.log(`  Port: ${process.env.SMTP_PORT || 587}`);
+    console.log(`  Secure: ${process.env.SMTP_SECURE || false}`);
+    console.log(`  NODE_ENV: ${process.env.NODE_ENV}`);
+
+    // ✅ Vérification des credentials
     if (host && user && pass) {
+      // Vérifier si les credentials sont valides (pas les valeurs par défaut)
       const hasValidCreds = 
                            !user.toLowerCase().includes('votre_email') && 
-                           !pass.toLowerCase().includes('votre_mot_de_passe');
-      
+                           !pass.toLowerCase().includes('votre_mot_de_passe') &&
+                           !user.includes('contact@lespalmiers-reunion.re') ||
+                           user.includes('@ethereal.email'); // ✅ Autoriser Ethereal
+
+      // Vérifier si c'est Ethereal
+      const isEthereal = user.includes('@ethereal.email');
+
       if (hasValidCreds) {
+        console.log(`📧 [EmailService] ${isEthereal ? '✅ Ethereal' : '✅ OVH'} configuré avec succès`);
+        
         this.transporter = nodemailer.createTransport({
           host: host,
           port: parseInt(process.env.SMTP_PORT || '587'),
@@ -35,53 +49,96 @@ export class EmailService {
             rejectUnauthorized: false
           }
         });
+
+        // ✅ Tester la connexion
+        this.verifyConnection();
+
         this.isConfigured = true;
-        console.log('📧 Service email configuré avec OVH');
       } else {
-        console.log('⚠️ Service email: credentials par défaut non configurés');
+        console.warn('⚠️ [EmailService] Credentials invalides ou par défaut');
+        console.warn(`  User: ${user}`);
         this.isConfigured = false;
       }
     } else {
-      console.log('⚠️ Service email: variables d\'environnement SMTP manquantes');
+      console.warn('⚠️ [EmailService] Variables d\'environnement SMTP manquantes');
       this.isConfigured = false;
     }
 
-    // ✅ Fallback pour le développement : Ethereal (faux SMTP de test)
+    // ✅ Fallback pour le développement
     if (!this.isConfigured && process.env.NODE_ENV === 'development') {
-      console.log('📧 Service email: utilisation d\'Ethereal (mode test)');
-      // Créer un transporteur factice qui log seulement
+      console.log('📧 [EmailService] ⚠️ Utilisation du mode développement (simulation)');
+      console.log('📧 [EmailService] Les emails seront affichés dans la console uniquement');
       this.transporter = {
         sendMail: async (mailOptions: any) => {
-          console.log('📧 [DEV] Email simulé:');
-          console.log(`  To: ${mailOptions.to}`);
-          console.log(`  Subject: ${mailOptions.subject}`);
-          console.log(`  Body: ${mailOptions.html?.substring(0, 200)}...`);
+          console.log(`\n📧 [DEV SIMULATION] Email simulé:`);
+          console.log(`  ────────────────────────────────`);
+          console.log(`  À: ${mailOptions.to}`);
+          console.log(`  Sujet: ${mailOptions.subject}`);
+          console.log(`  Contenu: ${mailOptions.html?.substring(0, 300)}${mailOptions.html?.length > 300 ? '...' : ''}`);
+          console.log(`  ────────────────────────────────\n`);
           return { messageId: `dev-${Date.now()}` };
         }
       } as any;
       this.isConfigured = true;
     }
+
+    // ✅ Si configuré, afficher un message de succès
+    if (this.isConfigured) {
+      const transportType = process.env.SMTP_USER?.includes('@ethereal.email') ? 'Ethereal' : 
+                           process.env.SMTP_HOST?.includes('ovh') ? 'OVH' : 'SMTP';
+      console.log(`✅ [EmailService] Service email configuré avec ${transportType}`);
+    }
   }
 
-  // ─── METHODE D'ENVOI PRINCIPALE ─────────────────────────────────────────────
+  // ─── VÉRIFICATION DE LA CONNEXION ──────────────────────────────────────────
 
-  async envoyerViaOVH(to: string, subject: string, html: string): Promise<{ success: boolean; error?: string }> {
+  private async verifyConnection() {
+    try {
+      if (this.transporter && this.isConfigured) {
+        await this.transporter.verify();
+        console.log('✅ [EmailService] Connexion SMTP vérifiée avec succès');
+      }
+    } catch (error: any) {
+      console.warn(`⚠️ [EmailService] Échec de la vérification SMTP: ${error.message}`);
+      console.warn('⚠️ [EmailService] Les emails seront tentés mais pourraient échouer');
+    }
+  }
+
+  // ─── MÉTHODE D'ENVOI PRINCIPALE ─────────────────────────────────────────────
+
+  async envoyerViaOVH(to: string, subject: string, html: string): Promise<{ success: boolean; error?: string; messageId?: string }> {
+    const startTime = Date.now();
+    console.log(`📧 [EmailService] Envoi d'email à ${to}...`);
+    console.log(`  Sujet: ${subject.substring(0, 50)}${subject.length > 50 ? '...' : ''}`);
+
+    // ✅ Vérifier que le service est configuré
     if (!this.isConfigured) {
-      console.warn('📧 [Email] Service non configuré, simulation d\'envoi');
-      console.log(`  To: ${to}`);
-      console.log(`  Subject: ${subject}`);
-      return { success: true, error: 'SIMULATION: service non configuré' };
+      console.warn(`⚠️ [EmailService] Service non configuré, simulation d'envoi vers ${to}`);
+      console.log(`  Sujet: ${subject}`);
+      console.log(`  Contenu: ${html.substring(0, 200)}...`);
+      
+      // ✅ En mode développement, on simule quand même un succès
+      if (process.env.NODE_ENV === 'development') {
+        return { 
+          success: true, 
+          error: 'SIMULATION: service non configuré',
+          messageId: `sim-${Date.now()}`
+        };
+      }
+      return { success: false, error: 'Service email non configuré' };
     }
 
     try {
       const from = process.env.SMTP_FROM || process.env.SMTP_USER || 'contact@lespalmiers-reunion.re';
+      
+      console.log(`  From: ${from}`);
+      console.log(`  Host: ${process.env.SMTP_HOST}`);
       
       const info = await this.transporter.sendMail({
         from: from,
         to: to,
         subject: subject,
         html: html,
-        // Headers pour améliorer la délivrabilité
         headers: {
           'X-Mailer': 'Les Palmiers - Gîte de charme',
           'X-Priority': '3',
@@ -89,10 +146,31 @@ export class EmailService {
         }
       });
 
-      console.log(`📧 [Email] Envoyé à ${to} - ID: ${info.messageId}`);
-      return { success: true };
+      const duration = Date.now() - startTime;
+      console.log(`✅ [EmailService] Email envoyé à ${to} en ${duration}ms - ID: ${info.messageId}`);
+      
+      // ✅ Si c'est Ethereal, afficher l'URL pour voir l'email
+      if (process.env.SMTP_USER?.includes('@ethereal.email')) {
+        console.log(`🔗 [EmailService] Voir l'email sur Ethereal: https://ethereal.email/messages/${info.messageId}`);
+      }
+      
+      return { success: true, messageId: info.messageId };
     } catch (error: any) {
-      console.error('[OVH] Erreur d\'envoi:', error.message);
+      const duration = Date.now() - startTime;
+      console.error(`❌ [EmailService] Erreur d'envoi à ${to} en ${duration}ms:`);
+      console.error(`  Message: ${error.message}`);
+      
+      if (error.response) {
+        console.error(`  Code: ${error.response.code}`);
+        console.error(`  Response: ${error.response.message || error.response}`);
+      }
+      
+      // ✅ Plus de détails sur l'erreur
+      if (error.code === 'EAUTH') {
+        console.error('  ⚠️ Problème d\'authentification - Vérifiez vos identifiants SMTP');
+        console.error(`  User: ${process.env.SMTP_USER}`);
+      }
+      
       return { success: false, error: error.message };
     }
   }
@@ -106,10 +184,12 @@ export class EmailService {
     reservationId?: number,
     messageId?: number
   ): Promise<{ success: boolean; error?: string }> {
+    console.log(`📧 [EmailService] Envoi avec historique - Type: ${type}, Client: ${clientId}`);
+    
     const result = await this.envoyerViaOVH(to, subject, html);
 
     try {
-      await MessageEmail.create({
+      const messageEmail = await MessageEmail.create({
         type: type as any,
         destinataire: to,
         clientId,
@@ -118,11 +198,12 @@ export class EmailService {
         corps: html,
         dateEnvoi: new Date(),
         statut: result.success ? 'ENVOYE' : 'ECHEC',
-        erreurMessage: result.error,
+        erreurMessage: result.error || null,
         messageId: messageId || null,
       });
+      console.log(`📧 [EmailService] Historique sauvegardé (ID: ${messageEmail.id}, statut: ${messageEmail.statut})`);
     } catch (err) {
-      console.error('[Email] Erreur sauvegarde historique:', err);
+      console.error('❌ [EmailService] Erreur sauvegarde historique:', err);
     }
 
     return result;
@@ -131,6 +212,7 @@ export class EmailService {
   // ─── CDC §3.6.1 : EMAILS AUTOMATIQUES ──────────────────────────────────────
 
   async envoyerConfirmation(reservationId: number) {
+    console.log(`📧 [EmailService] Envoi de confirmation pour la réservation ${reservationId}...`);
     try {
       const reservation = await Reservation.findByPk(reservationId, {
         include: [
@@ -140,11 +222,12 @@ export class EmailService {
       });
 
       if (!reservation || !reservation.client) {
-        console.log(`[Email] Réservation ${reservationId} ou client non trouvé`);
+        console.log(`⚠️ [EmailService] Réservation ${reservationId} ou client non trouvé`);
         return;
       }
 
-      // ✅ Récupérer le template depuis la table Message (qui stocke les modèles)
+      console.log(`📧 [EmailService] Confirmation pour ${reservation.client.email} (${reservation.client.prenom} ${reservation.client.nom})`);
+
       const template = await Message.findOne({
         where: { type: 'CONFIRMATION', valide: true }
       });
@@ -164,12 +247,13 @@ export class EmailService {
       `;
 
       if (template) {
+        console.log(`📧 [EmailService] Utilisation du modèle "${template.nom}" (ID: ${template.id})`);
         const variables = this.prepareVariables(reservation);
         sujet = this.remplacerVariables(template.sujet, variables);
         corps = this.remplacerVariables(template.corps, variables);
       }
 
-      await this.envoyerEmailAvecHistorique(
+      const result = await this.envoyerEmailAvecHistorique(
         reservation.client.email,
         sujet,
         corps,
@@ -179,22 +263,18 @@ export class EmailService {
         template?.id
       );
 
-      await SentEmail.create({
-        reservationId,
-        modeleId: template?.id,
-        destinataire: reservation.client.email,
-        sujet,
-        contenu: corps,
-        statut: 'ENVOYE'
-      });
-
-      console.log(`[Email] Confirmation envoyée à ${reservation.client.email}`);
+      if (result.success) {
+        console.log(`✅ [EmailService] Confirmation envoyée à ${reservation.client.email}`);
+      } else {
+        console.error(`❌ [EmailService] Échec de la confirmation pour ${reservation.client.email}: ${result.error}`);
+      }
     } catch (error) {
-      console.error('[Email] Erreur envoi confirmation:', error);
+      console.error(`❌ [EmailService] Erreur envoi confirmation ${reservationId}:`, error);
     }
   }
 
   async envoyerRappel(reservationId: number) {
+    console.log(`📧 [EmailService] Envoi de rappel J-7 pour la réservation ${reservationId}...`);
     try {
       const reservation = await Reservation.findByPk(reservationId, {
         include: [
@@ -203,7 +283,12 @@ export class EmailService {
         ]
       });
 
-      if (!reservation || !reservation.client) return;
+      if (!reservation || !reservation.client) {
+        console.log(`⚠️ [EmailService] Réservation ${reservationId} ou client non trouvé pour le rappel`);
+        return;
+      }
+
+      console.log(`📧 [EmailService] Rappel J-7 pour ${reservation.client.email} (${reservation.client.prenom} ${reservation.client.nom})`);
 
       const template = await Message.findOne({
         where: { type: 'RAPPEL_J7', valide: true }
@@ -229,12 +314,13 @@ export class EmailService {
       `;
 
       if (template) {
+        console.log(`📧 [EmailService] Utilisation du modèle "${template.nom}" (ID: ${template.id})`);
         const variables = this.prepareVariables(reservation);
         sujet = this.remplacerVariables(template.sujet, variables);
         corps = this.remplacerVariables(template.corps, variables);
       }
 
-      await this.envoyerEmailAvecHistorique(
+      const result = await this.envoyerEmailAvecHistorique(
         reservation.client.email,
         sujet,
         corps,
@@ -244,13 +330,18 @@ export class EmailService {
         template?.id
       );
 
-      console.log(`[Email] Rappel J-7 envoyé à ${reservation.client.email}`);
+      if (result.success) {
+        console.log(`✅ [EmailService] Rappel J-7 envoyé à ${reservation.client.email}`);
+      } else {
+        console.error(`❌ [EmailService] Échec du rappel J-7 pour ${reservation.client.email}: ${result.error}`);
+      }
     } catch (error) {
-      console.error('[Email] Erreur envoi rappel:', error);
+      console.error(`❌ [EmailService] Erreur envoi rappel ${reservationId}:`, error);
     }
   }
 
   async envoyerRemerciement(reservationId: number) {
+    console.log(`📧 [EmailService] Envoi de remerciement J+2 pour la réservation ${reservationId}...`);
     try {
       const reservation = await Reservation.findByPk(reservationId, {
         include: [
@@ -259,7 +350,12 @@ export class EmailService {
         ]
       });
 
-      if (!reservation || !reservation.client) return;
+      if (!reservation || !reservation.client) {
+        console.log(`⚠️ [EmailService] Réservation ${reservationId} ou client non trouvé pour le remerciement`);
+        return;
+      }
+
+      console.log(`📧 [EmailService] Remerciement J+2 pour ${reservation.client.email} (${reservation.client.prenom} ${reservation.client.nom})`);
 
       const template = await Message.findOne({
         where: { type: 'REMERCIEMENT_J2', valide: true }
@@ -277,12 +373,13 @@ export class EmailService {
       `;
 
       if (template) {
+        console.log(`📧 [EmailService] Utilisation du modèle "${template.nom}" (ID: ${template.id})`);
         const variables = this.prepareVariables(reservation);
         sujet = this.remplacerVariables(template.sujet, variables);
         corps = this.remplacerVariables(template.corps, variables);
       }
 
-      await this.envoyerEmailAvecHistorique(
+      const result = await this.envoyerEmailAvecHistorique(
         reservation.client.email,
         sujet,
         corps,
@@ -292,13 +389,18 @@ export class EmailService {
         template?.id
       );
 
-      console.log(`[Email] Remerciement J+2 envoyé à ${reservation.client.email}`);
+      if (result.success) {
+        console.log(`✅ [EmailService] Remerciement J+2 envoyé à ${reservation.client.email}`);
+      } else {
+        console.error(`❌ [EmailService] Échec du remerciement J+2 pour ${reservation.client.email}: ${result.error}`);
+      }
     } catch (error) {
-      console.error('[Email] Erreur envoi remerciement:', error);
+      console.error(`❌ [EmailService] Erreur envoi remerciement ${reservationId}:`, error);
     }
   }
 
   async envoyerAnnulation(reservationId: number, penalite: number = 0) {
+    console.log(`📧 [EmailService] Envoi d'annulation pour la réservation ${reservationId} (pénalité: ${penalite}€)...`);
     try {
       const reservation = await Reservation.findByPk(reservationId, {
         include: [
@@ -307,7 +409,12 @@ export class EmailService {
         ]
       });
 
-      if (!reservation || !reservation.client) return;
+      if (!reservation || !reservation.client) {
+        console.log(`⚠️ [EmailService] Réservation ${reservationId} ou client non trouvé pour l'annulation`);
+        return;
+      }
+
+      console.log(`📧 [EmailService] Annulation pour ${reservation.client.email} (${reservation.client.prenom} ${reservation.client.nom})`);
 
       const template = await Message.findOne({
         where: { type: 'ANNULATION', valide: true }
@@ -326,12 +433,13 @@ export class EmailService {
       `;
 
       if (template) {
+        console.log(`📧 [EmailService] Utilisation du modèle "${template.nom}" (ID: ${template.id})`);
         const variables = { ...this.prepareVariables(reservation), penalite };
         sujet = this.remplacerVariables(template.sujet, variables);
         corps = this.remplacerVariables(template.corps, variables);
       }
 
-      await this.envoyerEmailAvecHistorique(
+      const result = await this.envoyerEmailAvecHistorique(
         reservation.client.email,
         sujet,
         corps,
@@ -341,13 +449,18 @@ export class EmailService {
         template?.id
       );
 
-      console.log(`[Email] Annulation envoyée à ${reservation.client.email}`);
+      if (result.success) {
+        console.log(`✅ [EmailService] Annulation envoyée à ${reservation.client.email}`);
+      } else {
+        console.error(`❌ [EmailService] Échec de l'annulation pour ${reservation.client.email}: ${result.error}`);
+      }
     } catch (error) {
-      console.error('[Email] Erreur envoi annulation:', error);
+      console.error(`❌ [EmailService] Erreur envoi annulation ${reservationId}:`, error);
     }
   }
 
   async envoyerRelancePaiement(reservationId: number) {
+    console.log(`📧 [EmailService] Envoi de relance paiement pour la réservation ${reservationId}...`);
     try {
       const reservation = await Reservation.findByPk(reservationId, {
         include: [
@@ -356,7 +469,12 @@ export class EmailService {
         ]
       });
 
-      if (!reservation || !reservation.client) return;
+      if (!reservation || !reservation.client) {
+        console.log(`⚠️ [EmailService] Réservation ${reservationId} ou client non trouvé pour la relance paiement`);
+        return;
+      }
+
+      console.log(`📧 [EmailService] Relance paiement pour ${reservation.client.email} (${reservation.client.prenom} ${reservation.client.nom})`);
 
       const template = await Message.findOne({
         where: { type: 'RELANCE_PAIEMENT', valide: true }
@@ -378,12 +496,13 @@ export class EmailService {
       `;
 
       if (template) {
+        console.log(`📧 [EmailService] Utilisation du modèle "${template.nom}" (ID: ${template.id})`);
         const variables = { ...this.prepareVariables(reservation), solde };
         sujet = this.remplacerVariables(template.sujet, variables);
         corps = this.remplacerVariables(template.corps, variables);
       }
 
-      await this.envoyerEmailAvecHistorique(
+      const result = await this.envoyerEmailAvecHistorique(
         reservation.client.email,
         sujet,
         corps,
@@ -393,9 +512,13 @@ export class EmailService {
         template?.id
       );
 
-      console.log(`[Email] Relance paiement envoyée à ${reservation.client.email}`);
+      if (result.success) {
+        console.log(`✅ [EmailService] Relance paiement envoyée à ${reservation.client.email}`);
+      } else {
+        console.error(`❌ [EmailService] Échec de la relance paiement pour ${reservation.client.email}: ${result.error}`);
+      }
     } catch (error) {
-      console.error('[Email] Erreur envoi relance paiement:', error);
+      console.error(`❌ [EmailService] Erreur envoi relance paiement ${reservationId}:`, error);
     }
   }
 
@@ -452,6 +575,8 @@ export class EmailService {
     const dateCible = new Date(today);
     dateCible.setDate(dateCible.getDate() + 7);
 
+    console.log(`📧 [CRON] Envoi des rappels J-7 pour le ${dateCible.toLocaleDateString('fr-FR')}...`);
+
     const reservations = await Reservation.findAll({
       where: {
         dateArrivee: {
@@ -465,11 +590,22 @@ export class EmailService {
       ]
     });
 
-    console.log(`[CRON] ${reservations.length} rappels J-7 à envoyer`);
+    console.log(`📧 [CRON] ${reservations.length} rappels J-7 à envoyer`);
+
+    let successCount = 0;
+    let errorCount = 0;
 
     for (const reservation of reservations) {
-      await this.envoyerRappel(reservation.id);
+      try {
+        await this.envoyerRappel(reservation.id);
+        successCount++;
+      } catch (error) {
+        console.error(`❌ [CRON] Erreur pour la réservation ${reservation.id}:`, error);
+        errorCount++;
+      }
     }
+
+    console.log(`📧 [CRON] Rappels J-7 terminés: ${successCount} succès, ${errorCount} échecs`);
   }
 
   async envoyerRemerciementsJPlus2() {
@@ -477,6 +613,8 @@ export class EmailService {
     today.setHours(0, 0, 0, 0);
     const dateCible = new Date(today);
     dateCible.setDate(dateCible.getDate() - 2);
+
+    console.log(`📧 [CRON] Envoi des remerciements J+2 pour le ${dateCible.toLocaleDateString('fr-FR')}...`);
 
     const reservations = await Reservation.findAll({
       where: {
@@ -491,14 +629,27 @@ export class EmailService {
       ]
     });
 
-    console.log(`[CRON] ${reservations.length} remerciements J+2 à envoyer`);
+    console.log(`📧 [CRON] ${reservations.length} remerciements J+2 à envoyer`);
+
+    let successCount = 0;
+    let errorCount = 0;
 
     for (const reservation of reservations) {
-      await this.envoyerRemerciement(reservation.id);
+      try {
+        await this.envoyerRemerciement(reservation.id);
+        successCount++;
+      } catch (error) {
+        console.error(`❌ [CRON] Erreur pour la réservation ${reservation.id}:`, error);
+        errorCount++;
+      }
     }
+
+    console.log(`📧 [CRON] Remerciements J+2 terminés: ${successCount} succès, ${errorCount} échecs`);
   }
 
   async marquerImpayes() {
+    console.log(`📧 [CRON] Vérification des impayés...`);
+
     const reservations = await Reservation.findAll({
       where: {
         statut: ['CONFIRMEE', 'EN_ATTENTE_ACOMPTE']
@@ -508,7 +659,10 @@ export class EmailService {
 
     const impayes = reservations.filter(r => (r.montantTotal || 0) - (r.montantAcompte || 0) > 0);
 
-    console.log(`[CRON] ${impayes.length} réservations avec impayés`);
+    console.log(`📧 [CRON] ${impayes.length} réservations avec impayés`);
+
+    let successCount = 0;
+    let errorCount = 0;
 
     for (const reservation of impayes) {
       const arrivee = new Date(reservation.dateArrivee);
@@ -516,12 +670,20 @@ export class EmailService {
       const daysBeforeArrival = Math.ceil((arrivee.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
 
       if (daysBeforeArrival <= 7 && daysBeforeArrival > 0) {
-        await this.envoyerRelancePaiement(reservation.id);
+        try {
+          await this.envoyerRelancePaiement(reservation.id);
+          successCount++;
+        } catch (error) {
+          console.error(`❌ [CRON] Erreur pour la réservation ${reservation.id}:`, error);
+          errorCount++;
+        }
       }
     }
+
+    console.log(`📧 [CRON] Relances impayés terminées: ${successCount} succès, ${errorCount} échecs`);
   }
 
-  // ─── SUBSTITUTION AVEC OBJET COMPLET (utilisée par le contrôleur Communication) ──
+  // ─── SUBSTITUTION AVEC OBJET COMPLET ────────────────────────────────────────
 
   substituerVariables(template: string, data: { client: Client; reservationId?: number; reservation?: Reservation }): string {
     const client = data.client;
@@ -573,35 +735,6 @@ export class EmailService {
   async envoyerViaOVHSimple(params: { to: string; subject: string; html: string }) {
     return this.envoyerViaOVH(params.to, params.subject, params.html);
   }
-
-  // ✅ AJOUT : méthode pour tester la configuration email
-  async testerConfigEmail(): Promise<{ success: boolean; message: string }> {
-    if (!this.isConfigured) {
-      return { success: false, message: 'Service email non configuré' };
-    }
-
-    try {
-      // Tester l'envoi à soi-même
-      const testEmail = process.env.SMTP_FROM || process.env.SMTP_USER;
-      if (!testEmail) {
-        return { success: false, message: 'Aucun email de test configuré' };
-      }
-
-      const result = await this.envoyerViaOVH(
-        testEmail,
-        'Test - Configuration email Les Palmiers',
-        '<h1>Test réussi !</h1><p>Votre configuration email fonctionne correctement.</p>'
-      );
-
-      if (result.success) {
-        return { success: true, message: `Email de test envoyé à ${testEmail}` };
-      } else {
-        return { success: false, message: result.error || 'Erreur inconnue' };
-      }
-    } catch (error: any) {
-      return { success: false, message: error.message };
-    }
-  }
 }
 
 // ─── EXPORT INSTANCE ──────────────────────────────────────────────────────────
@@ -614,6 +747,5 @@ export const marquerImpayes = () => emailService.marquerImpayes();
 export const envoyerViaOVH = (params: { to: string; subject: string; html: string }) => emailService.envoyerViaOVHSimple(params);
 export const substituerVariables = (template: string, data: { client: Client; reservationId?: number; reservation?: Reservation }) =>
   emailService.substituerVariables(template, data);
-export const testerConfigEmail = () => emailService.testerConfigEmail();
 
 export default emailService;
