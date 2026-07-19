@@ -4,6 +4,18 @@ import { Op, Sequelize } from 'sequelize';
 import { Room, Tariff, RoomEquipment, Equipment, RoomBlock, Reservation, User, Client, PromoCode } from '../models';
 import { WebSocketManager } from '../websocket/server';
 
+// ✅ AJOUT — la méthode getVeloReservationRoomId() de
+// services-annexes.controller.ts crée une VRAIE ligne dans la table Room
+// (numero: 'VELO-0', nom: 'LOCATION_VELO') pour pouvoir rattacher les
+// locations de vélos à une "réservation fantôme". Cette chambre virtuelle
+// n'est pas destinée à être affichée : elle doit être exclue de TOUTES les
+// requêtes de chambres ci-dessous, sinon elle apparaît comme une vraie
+// carte sur la page /chambres.
+const EXCLURE_CHAMBRE_VELO = {
+  numero: { [Op.ne]: 'VELO-0' },
+  nom: { [Op.ne]: 'LOCATION_VELO' }
+};
+
 export class ChambresController {
   private async estChambreOccupeeAujourdHui(chambreId: number): Promise<boolean> {
     const today = new Date();
@@ -84,6 +96,7 @@ export class ChambresController {
   getAll = async (req: Request, res: Response) => {
     try {
       const chambres = await Room.findAll({
+        where: EXCLURE_CHAMBRE_VELO,
         include: [
           {
             model: Equipment,
@@ -187,6 +200,7 @@ export class ChambresController {
       }
 
       const allRooms = await Room.findAll({
+        where: EXCLURE_CHAMBRE_VELO,
         include: [
           {
             model: Equipment,
@@ -270,6 +284,7 @@ export class ChambresController {
       const endDate = new Date(year, month, 0);
 
       const chambres = await Room.findAll({
+        where: EXCLURE_CHAMBRE_VELO,
         include: [
           {
             model: Equipment,
@@ -385,7 +400,8 @@ export class ChambresController {
           {
             model: Room,
             as: 'chambre',
-            attributes: ['id', 'numero', 'nom']
+            attributes: ['id', 'numero', 'nom'],
+            where: EXCLURE_CHAMBRE_VELO
           }
         ],
         order: [['dateDebut', 'ASC']]
@@ -409,7 +425,8 @@ export class ChambresController {
     try {
       const { id } = req.params;
 
-      const chambre = await Room.findByPk(id, {
+      const chambre = await Room.findOne({
+        where: { id, ...EXCLURE_CHAMBRE_VELO },
         include: [
           {
             model: Equipment,
@@ -936,7 +953,9 @@ export class ChambresController {
           {
             model: Room,
             as: 'chambre',
-            attributes: ['numero', 'nom']
+            attributes: ['numero', 'nom'],
+            where: EXCLURE_CHAMBRE_VELO,
+            required: true
           }
         ],
         order: [['dateArrivee', 'ASC']]
@@ -975,9 +994,8 @@ export class ChambresController {
       const today = new Date();
       today.setHours(0, 0, 0, 0);
 
-      console.log('📊 [getChambresAvecOccupation] Début du calcul —', today.toISOString());
-
       const chambres = await Room.findAll({
+        where: EXCLURE_CHAMBRE_VELO,
         include: [
           {
             model: Equipment,
@@ -993,8 +1011,6 @@ export class ChambresController {
         order: [['numero', 'ASC']]
       });
 
-      console.log(`📊 [getChambresAvecOccupation] ${chambres.length} chambre(s) trouvée(s)`);
-
       const reservationsActives = await Reservation.findAll({
         where: {
           statut: { [Op.in]: ['CONFIRMEE', 'EN_ATTENTE_ACOMPTE'] },
@@ -1009,18 +1025,27 @@ export class ChambresController {
           {
             model: Room,
             as: 'chambre',
-            attributes: ['id', 'nom', 'numero']
+            attributes: ['id', 'nom', 'numero'],
+            where: EXCLURE_CHAMBRE_VELO,
+            required: true
           }
         ],
         order: [['dateArrivee', 'ASC']]
       });
 
-      console.log(`📊 [getChambresAvecOccupation] ${reservationsActives.length} réservation(s) active(s) trouvée(s)`);
-
       const blocagesActifs = await RoomBlock.findAll({
         where: {
           dateFin: { [Op.gte]: today }
-        }
+        },
+        include: [
+          {
+            model: Room,
+            as: 'chambre',
+            attributes: [],
+            where: EXCLURE_CHAMBRE_VELO,
+            required: true
+          }
+        ]
       });
 
       const stats = {
@@ -1167,10 +1192,19 @@ export class ChambresController {
       const startOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
       const endOfMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0, 23, 59, 59, 999);
 
+      // ✅ Exclu également les réservations "fantômes" de vélos/transferts
+      // du calcul des revenus du mois de la page Chambres (chambreId de la
+      // chambre virtuelle exclu via la sous-requête sur Room).
+      const chambreVeloIds = (await Room.findAll({
+        where: { [Op.or]: [{ numero: 'VELO-0' }, { nom: 'LOCATION_VELO' }] },
+        attributes: ['id']
+      })).map(r => r.id);
+
       const reservationsDuMois = await Reservation.findAll({
         where: {
           statut: { [Op.notIn]: ['ANNULEE'] },
-          dateArrivee: { [Op.gte]: startOfMonth, [Op.lte]: endOfMonth }
+          dateArrivee: { [Op.gte]: startOfMonth, [Op.lte]: endOfMonth },
+          ...(chambreVeloIds.length > 0 ? { chambreId: { [Op.notIn]: chambreVeloIds } } : {})
         },
         attributes: ['id', 'montantTotal', 'dateArrivee', 'statut']
       });
@@ -1178,8 +1212,6 @@ export class ChambresController {
       stats.revenusMois = Math.round(
         reservationsDuMois.reduce((sum, r) => sum + (Number(r.montantTotal) || 0), 0) * 100
       ) / 100;
-
-      console.log(`💰 [getChambresAvecOccupation] Revenus du mois: ${stats.revenusMois}€`);
 
       const prochainesArrivees = reservationsActives
         .filter(r => {
@@ -1258,7 +1290,6 @@ export class ChambresController {
     try {
       const { id } = req.params;
       const { code } = req.body;
-      const userId = (req as any).user?.id;
 
       if (!code) {
         return res.status(400).json({

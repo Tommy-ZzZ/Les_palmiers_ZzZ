@@ -1,3 +1,9 @@
+// backend/src/routes/codesPromo.routes.ts
+//
+// À monter dans app.ts avec :
+//   import codesPromoRoutes from './routes/codesPromo.routes';
+//   app.use('/api/codes-promo', codesPromoRoutes);
+//
 import { Router } from 'express';
 import { CodesPromoController } from '../controllers/codesPromo.controller';
 import { authenticate, isGerante } from '../middleware/auth.middleware';

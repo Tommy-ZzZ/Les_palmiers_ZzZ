@@ -31,6 +31,12 @@ export interface RoomAttributes {
   accessiblePmr: boolean;
   statut: StatutChambre;
   description?: string;
+  // ✅ AJOUT — image de la chambre stockée directement en base (Sequelize),
+  // sous forme de data URI base64 (ex: "data:image/png;base64,...").
+  // Aucune dépendance à un service de fichiers/CDN externe n'est nécessaire :
+  // l'admin upload une image depuis son poste, elle est encodée côté
+  // frontend puis envoyée telle quelle dans le payload JSON.
+  image?: string;
   climatisation: boolean;
   ventilateur: boolean;
   secheCheveux: boolean;
@@ -40,7 +46,7 @@ export interface RoomAttributes {
   updated_at: Date;
 }
 
-export interface RoomCreationAttributes extends Optional<RoomAttributes, 'id' | 'climatisation' | 'ventilateur' | 'secheCheveux' | 'bouilloire' | 'miniRefrigerateur' | 'created_at' | 'updated_at'> {}
+export interface RoomCreationAttributes extends Optional<RoomAttributes, 'id' | 'image' | 'climatisation' | 'ventilateur' | 'secheCheveux' | 'bouilloire' | 'miniRefrigerateur' | 'created_at' | 'updated_at'> {}
 
 export class Room extends Model<RoomAttributes, RoomCreationAttributes> implements RoomAttributes {
   public id!: number;
@@ -56,6 +62,7 @@ export class Room extends Model<RoomAttributes, RoomCreationAttributes> implemen
   public accessiblePmr!: boolean;
   public statut!: StatutChambre;
   public description?: string;
+  public image?: string;
   public climatisation!: boolean;
   public ventilateur!: boolean;
   public secheCheveux!: boolean;
@@ -133,6 +140,26 @@ Room.init(
       defaultValue: StatutChambre.DISPONIBLE
     },
     description: {
+      type: DataTypes.TEXT,
+      allowNull: true
+    },
+    // ✅ AJOUT — colonne image (TEXT, illimité côté Postgres) pour stocker
+    // le base64 de la photo de la chambre. Sur Postgres, TEXT n'a pas de
+    // variante de taille (contrairement à MySQL où TEXT('long') donnerait
+    // LONGTEXT) : un simple TEXT est déjà sans limite de longueur.
+    //
+    // Avec `sequelize.sync({ alter: true })` (mode développement dans
+    // database.ts), cette colonne est créée automatiquement au prochain
+    // redémarrage du serveur — aucune migration manuelle à lancer en dev.
+    //
+    // ⚠️ En production, `alter` est désactivé volontairement (voir
+    // database.ts) : il faudra alors une vraie migration SQL, par exemple :
+    //   ALTER TABLE chambres ADD COLUMN image TEXT NULL;
+    //
+    // Pensez aussi à augmenter la limite du body-parser côté Express,
+    // sinon l'upload d'image base64 sera rejeté :
+    //   app.use(express.json({ limit: '10mb' }));
+    image: {
       type: DataTypes.TEXT,
       allowNull: true
     },

@@ -1,5 +1,6 @@
 // frontend/src/pages/PaiementsPage.tsx
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import toast from 'react-hot-toast';
 import {
   CreditCard,
@@ -47,6 +48,7 @@ import {
   Zap,
   Lock,
   Check,
+  CheckCheck,
   CircleCheck,
   Palmtree,
   Building,
@@ -1204,29 +1206,167 @@ const StatCard = ({
 // COMPOSANT — ALERTE BANNER
 // ============================================
 
-const AlerteBanner = ({ alertes }: { alertes: AlertePaiement[] }) => {
+const AlerteBanner = ({
+  alertes,
+  setAlertes,
+  expanded,
+  setExpanded,
+  containerRef,
+}: {
+  alertes: AlertePaiement[];
+  setAlertes: React.Dispatch<React.SetStateAction<AlertePaiement[]>>;
+  expanded: boolean;
+  setExpanded: (expanded: boolean) => void;
+  containerRef: React.RefObject<HTMLDivElement>;
+}) => {
   const nonLues = alertes.filter(a => !a.lue);
   if (nonLues.length === 0) return null;
 
   const critical = nonLues.filter(a => a.niveau === 'CRITICAL');
   const warnings = nonLues.filter(a => a.niveau === 'WARNING');
 
+  const markAsRead = (id: number) => {
+    setAlertes(prev => prev.map(a => a.id === id ? { ...a, lue: true } : a));
+    toast.success("Alerte marquée comme lue");
+  };
+
+  const markAllAsRead = () => {
+    setAlertes(prev => prev.map(a => ({ ...a, lue: true })));
+    toast.success("Toutes les alertes ont été marquées comme lues");
+  };
+
   return (
-    <div className="space-y-2">
-      {critical.map(a => (
-        <div key={a.id} className="flex items-center gap-3 px-4 py-3 bg-rose-50 border-l-4 border-rose-500 rounded-xl shadow-sm animate-slide-in">
-          <AlertCircle size={18} className="text-rose-500 shrink-0" />
-          <p className="text-sm text-rose-800 flex-1">{a.message}</p>
-          <span className="text-xs text-rose-500 font-medium px-2 py-0.5 bg-rose-100 rounded-full">CRITIQUE</span>
+    <div
+      ref={containerRef}
+      className="bg-white border border-gray-200 rounded-2xl shadow-sm overflow-hidden no-print transition-all duration-300 hover:shadow-md mb-6"
+    >
+      {/* En-tête du conteneur d'alertes */}
+      <div
+        onClick={() => setExpanded(!expanded)}
+        className="flex items-center justify-between p-4 cursor-pointer hover:bg-gray-50/50 transition-colors select-none"
+      >
+        <div className="flex items-center gap-3">
+          <div className="relative p-2 bg-rose-50 text-rose-500 rounded-xl">
+            <motion.div
+              animate={nonLues.length > 0 ? { rotate: [0, -10, 10, -10, 10, 0] } : {}}
+              transition={{ repeat: Infinity, duration: 2, repeatDelay: 1.5 }}
+            >
+              <Bell size={18} />
+            </motion.div>
+            {nonLues.length > 0 && (
+              <span className="absolute -top-0.5 -right-0.5 flex h-2.5 w-2.5">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-rose-500"></span>
+              </span>
+            )}
+          </div>
+          <div>
+            <h3 className="font-semibold text-gray-800 text-sm md:text-base flex items-center gap-2">
+              Alertes et Impayés
+              <span className="px-2 py-0.5 text-xs font-semibold bg-rose-100 text-rose-700 rounded-full">
+                {nonLues.length} active{nonLues.length > 1 ? "s" : ""}
+              </span>
+            </h3>
+            <p className="text-xs text-gray-500 mt-0.5">
+              {critical.length} critique{critical.length > 1 ? "s" : ""} · {warnings.length} attention{warnings.length > 1 ? "s" : ""}
+            </p>
+          </div>
         </div>
-      ))}
-      {warnings.map(a => (
-        <div key={a.id} className="flex items-center gap-3 px-4 py-3 bg-amber-50 border-l-4 border-amber-500 rounded-xl shadow-sm animate-slide-in" style={{ animationDelay: '100ms' }}>
-          <AlertTriangle size={18} className="text-amber-500 shrink-0" />
-          <p className="text-sm text-amber-800 flex-1">{a.message}</p>
-          <span className="text-xs text-amber-500 font-medium px-2 py-0.5 bg-amber-100 rounded-full">ATTENTION</span>
+
+        <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
+          {nonLues.length > 0 && (
+            <button
+              onClick={markAllAsRead}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-gray-600 hover:text-emerald-700 bg-gray-100 hover:bg-emerald-50 rounded-lg active:scale-95 transition-all duration-200 border border-gray-200"
+              title="Tout marquer comme lu"
+            >
+              <CheckCheck size={14} />
+              <span className="hidden sm:inline">Tout marquer comme lu</span>
+            </button>
+          )}
+          <button
+            onClick={() => setExpanded(!expanded)}
+            className="p-1.5 hover:bg-gray-100 rounded-lg text-gray-400 hover:text-gray-600 transition-colors"
+          >
+            {expanded ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
+          </button>
         </div>
-      ))}
+      </div>
+
+      {/* Liste des alertes avec animation de repli */}
+      <AnimatePresence initial={false}>
+        {expanded && (
+          <motion.div
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: "auto", opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={{ duration: 0.3, ease: "easeInOut" }}
+            className="border-t border-gray-100"
+          >
+            <div className="p-4 pt-1">
+              <div className="max-h-[250px] overflow-y-auto pr-1 space-y-2.5 custom-scrollbar py-2">
+                <AnimatePresence initial={false}>
+                  {nonLues.map((a) => {
+                    const isCritical = a.niveau === 'CRITICAL';
+                    return (
+                      <motion.div
+                        key={a.id}
+                        layout
+                        initial={{ opacity: 0, y: 15 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, x: 50, scale: 0.95 }}
+                        transition={{ duration: 0.25, ease: "easeOut" }}
+                        className={`group flex items-center gap-3 px-4 py-3 border rounded-xl shadow-sm transition-all duration-200 ${
+                          isCritical
+                            ? "bg-rose-50/60 border-rose-100 hover:border-rose-200 text-rose-800"
+                            : "bg-amber-50/60 border-amber-100 hover:border-amber-200 text-amber-800"
+                        }`}
+                      >
+                        {isCritical ? (
+                          <AlertCircle size={18} className="text-rose-500 shrink-0 animate-pulse" />
+                        ) : (
+                          <AlertTriangle size={18} className="text-amber-500 shrink-0" />
+                        )}
+
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium leading-relaxed">{a.message}</p>
+                          {a.dateHeure && (
+                            <p className="text-[10px] text-gray-400 mt-0.5">
+                              {formatDateTime(a.dateHeure)}
+                            </p>
+                          )}
+                        </div>
+
+                        <div className="flex items-center gap-2">
+                          <span className={`text-[10px] font-semibold tracking-wider px-2 py-0.5 rounded-full shrink-0 ${
+                            isCritical
+                              ? "bg-rose-100 text-rose-600 border border-rose-200/50"
+                              : "bg-amber-100 text-amber-700 border border-amber-200/50"
+                          }`}>
+                            {isCritical ? "CRITIQUE" : "WARNING"}
+                          </span>
+
+                          <button
+                            onClick={() => markAsRead(a.id)}
+                            className={`p-1 rounded-md opacity-0 group-hover:opacity-100 transition-all duration-200 border border-transparent ${
+                              isCritical
+                                ? "hover:bg-rose-100/85 text-rose-500 hover:text-rose-700"
+                                : "hover:bg-amber-100/85 text-amber-500 hover:text-amber-700"
+                            }`}
+                            title="Marquer comme lu"
+                          >
+                            <X size={15} />
+                          </button>
+                        </div>
+                      </motion.div>
+                    );
+                  })}
+                </AnimatePresence>
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 };
@@ -1410,14 +1550,14 @@ const PaiementRow = ({
         }`} />
       </td>
 
-      <td className="px-5 py-3.5">
-        <span className="font-mono text-xs font-semibold text-emerald-700 bg-emerald-50 px-3 py-1.5 rounded-lg border border-emerald-100">
+      <td className="px-4 py-3.5 overflow-hidden">
+        <span className="font-mono text-xs font-semibold text-emerald-700 bg-emerald-50 px-2.5 py-1.5 rounded-lg border border-emerald-100 inline-block truncate max-w-full">
           {r.numeroReservation}
         </span>
       </td>
 
-      <td className="px-5 py-3.5">
-        <div className="flex items-center gap-3">
+      <td className="px-4 py-3.5 overflow-hidden">
+        <div className="flex items-center gap-2.5 min-w-0">
           <div className="w-9 h-9 rounded-full bg-gradient-to-br from-emerald-400 to-emerald-600 flex items-center justify-center text-white font-semibold text-xs shrink-0 transition-transform duration-300 group-hover:scale-110">
             {r.client.prenom[0]}{r.client.nom[0]}
           </div>
@@ -1430,38 +1570,35 @@ const PaiementRow = ({
             </p>
             <p className="text-xs text-gray-500 flex items-center gap-1 truncate">
               <Mail size={10} className="text-gray-400 shrink-0" />
-              {r.client.email}
+              <span className="truncate">{r.client.email}</span>
             </p>
           </div>
         </div>
       </td>
 
-      <td className="px-5 py-3.5">
-        <p className="text-sm font-medium text-gray-800">{r.chambre.nom}</p>
-        <p className="text-xs text-gray-500">N° {r.chambre.numero}</p>
+      <td className="px-4 py-3.5 overflow-hidden">
+        <p className="text-sm font-medium text-gray-800 truncate">{r.chambre.nom}</p>
+        <p className="text-xs text-gray-500 truncate">N° {r.chambre.numero}</p>
       </td>
 
-      <td className="px-5 py-3.5">
-        <div className="flex items-center gap-1.5 text-xs text-gray-600">
-          <Calendar size={12} className="text-gray-400 shrink-0" />
-          <span>{formatDate(r.dateArrivee)}</span>
-          <span className="text-gray-300">→</span>
-          <span>{formatDate(r.dateDepart)}</span>
-        </div>
-        <p className="text-xs text-gray-500 mt-0.5 ml-5">{r.nbNuits} nuit{r.nbNuits > 1 ? 's' : ''}</p>
+      <td className="px-4 py-3.5 overflow-hidden">
+        <p className="text-xs text-gray-600 truncate">
+          {formatDate(r.dateArrivee)} à {formatDate(r.dateDepart)}
+        </p>
+        <p className="text-xs text-gray-500 mt-0.5">{r.nbNuits} nuit{r.nbNuits > 1 ? 's' : ''}</p>
       </td>
 
-      <td className="px-5 py-3.5 text-right">
-        <p className="text-sm font-semibold text-gray-900">{formatEuro(r.montantTotal)}</p>
+      <td className="px-3 py-3.5 text-right overflow-hidden">
+        <p className="text-sm font-semibold text-gray-900 truncate">{formatEuro(r.montantTotal)}</p>
       </td>
 
-      <td className="px-5 py-3.5 text-right">
-        <p className="text-sm font-semibold text-emerald-600">{formatEuro(r.montantAcompte)}</p>
+      <td className="px-3 py-3.5 text-right overflow-hidden">
+        <p className="text-sm font-semibold text-emerald-600 truncate">{formatEuro(r.montantAcompte)}</p>
       </td>
 
-      <td className="px-5 py-3.5 text-right">
+      <td className="px-3 py-3.5 text-right overflow-hidden">
         {hasDebt ? (
-          <p className="text-sm font-bold text-rose-600">
+          <p className="text-sm font-bold text-rose-600 truncate">
             {formatEuro(solde)}
           </p>
         ) : (
@@ -1469,57 +1606,46 @@ const PaiementRow = ({
         )}
       </td>
 
-      <td className="px-5 py-3.5">
+      <td className="px-3 py-3.5 overflow-hidden">
         <StatutBadge statut={r.statutPaiement} size="sm" />
         {r.paiements && r.paiements.length > 0 && (
-          <p className="text-xs text-gray-500 mt-1">{r.paiements.length} paiement{r.paiements.length > 1 ? 's' : ''}</p>
+          <p className="text-xs text-gray-500 mt-1 truncate">{r.paiements.length} paiement{r.paiements.length > 1 ? 's' : ''}</p>
         )}
       </td>
 
-      <td className="px-5 py-3.5">
-        <div className="flex items-center gap-0.5 justify-end">
+      <td className="px-3 py-3.5">
+        <div className="flex items-center gap-1 justify-end">
           {(r.statutPaiement === 'EN_ATTENTE' || r.statutPaiement === 'PARTIEL') && (
             <button
               onClick={() => onOpenPaiement(r)}
-              className={`p-2 rounded-lg transition-all duration-300 text-emerald-600 hover:bg-emerald-50 ${
-                isHovered ? 'opacity-100 translate-x-0' : 'opacity-0 translate-x-2'
-              }`}
+              className="p-1.5 rounded-lg border border-emerald-200 bg-emerald-50 text-emerald-600 transition-all duration-200 hover:bg-emerald-600 hover:text-white hover:border-emerald-600 hover:scale-110 hover:shadow-md active:scale-95 shrink-0"
               title="Enregistrer un paiement"
             >
-              <Plus size={15} />
+              <Plus size={14} />
             </button>
           )}
           {(r.statutPaiement === 'EN_ATTENTE' || r.statutPaiement === 'PARTIEL') && (
             <button
               onClick={() => onRelance(r.id)}
-              className={`p-2 rounded-lg transition-all duration-300 text-amber-500 hover:bg-amber-50 ${
-                isHovered ? 'opacity-100 translate-x-0' : 'opacity-0 translate-x-2'
-              }`}
-              style={{ transitionDelay: '30ms' }}
+              className="p-1.5 rounded-lg border border-amber-200 bg-amber-50 text-amber-600 transition-all duration-200 hover:bg-amber-500 hover:text-white hover:border-amber-500 hover:scale-110 hover:shadow-md active:scale-95 shrink-0"
               title="Envoyer une relance"
             >
-              <Send size={14} />
+              <Send size={13} />
             </button>
           )}
           <button
             onClick={() => onViewDetails(r)}
-            className={`p-2 rounded-lg transition-all duration-300 text-gray-500 hover:text-emerald-600 hover:bg-emerald-50 ${
-              isHovered ? 'opacity-100 translate-x-0' : 'opacity-0 translate-x-2'
-            }`}
-            style={{ transitionDelay: '60ms' }}
+            className="p-1.5 rounded-lg border border-gray-200 bg-gray-50 text-gray-600 transition-all duration-200 hover:bg-emerald-600 hover:text-white hover:border-emerald-600 hover:scale-110 hover:shadow-md active:scale-95 shrink-0"
             title="Voir l'historique"
           >
-            <Eye size={14} />
+            <Eye size={13} />
           </button>
           <button
             onClick={() => onPrintFacture(r)}
-            className={`p-2 rounded-lg transition-all duration-300 text-sky-500 hover:text-sky-700 hover:bg-sky-50 ${
-              isHovered ? 'opacity-100 translate-x-0' : 'opacity-0 translate-x-2'
-            }`}
-            style={{ transitionDelay: '90ms' }}
+            className="p-1.5 rounded-lg border border-sky-200 bg-sky-50 text-sky-600 transition-all duration-200 hover:bg-sky-600 hover:text-white hover:border-sky-600 hover:scale-110 hover:shadow-md active:scale-95 shrink-0"
             title="Voir la facture"
           >
-            <FileText size={14} />
+            <FileText size={13} />
           </button>
         </div>
       </td>
@@ -1543,6 +1669,16 @@ export default function PaiementsPage() {
   const [showFilters, setShowFilters] = useState(true);
   const [rowsVisible, setRowsVisible] = useState(false);
   const [alertes, setAlertes] = useState<AlertePaiement[]>([]);
+  const [alertsExpanded, setAlertsExpanded] = useState(true);
+  const alertsRef = useRef<HTMLDivElement>(null);
+
+  const scrollToAlerts = () => {
+    setAlertsExpanded(true);
+    setTimeout(() => {
+      alertsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }, 100);
+  };
+
   const PER_PAGE = 10;
 
   const { refreshChambres } = useWebSocketContext();
@@ -2031,41 +2167,11 @@ export default function PaiementsPage() {
             <BadgeDollarSign size={22} className="text-emerald-600" />
           </div>
           <div>
-            <h1 className="text-xl font-bold text-gray-900 flex items-center gap-2">
-              Paiements
-              <span className="text-xs font-normal text-gray-400 bg-gray-100 px-2 py-0.5 rounded-full">
-                {stats.total} réservation{stats.total > 1 ? 's' : ''}
-              </span>
-            </h1>
-            <div className="flex items-center gap-3 mt-1">
-              <RecouvrementRing taux={stats.tauxRecouvrement} />
-              <p className="text-sm text-gray-500 flex items-center gap-2 flex-wrap">
-                <span className="text-emerald-600 font-medium">{stats.complet} soldées</span>
-                {stats.partiel > 0 && <span className="text-amber-500 font-medium">· {stats.partiel} partielles</span>}
-                {stats.enAttente > 0 && <span className="text-sky-500 font-medium">· {stats.enAttente} en attente</span>}
-                <span className="text-gray-300">|</span>
-                <span className="text-gray-400">Taux de recouvrement</span>
-                <span className={`font-semibold ${stats.tauxRecouvrement >= 80 ? 'text-emerald-600' : stats.tauxRecouvrement >= 50 ? 'text-amber-500' : 'text-rose-500'}`}>
-                  {stats.tauxRecouvrement}%
-                </span>
-              </p>
-            </div>
+            <h1 className="text-xl font-bold text-gray-900">Paiements</h1>
           </div>
         </div>
 
         <div className="flex items-center gap-2 no-print">
-          {alertes.filter(a => !a.lue).length > 0 && (
-            <div className="flex items-center gap-1.5 px-3 py-1.5 bg-rose-50 border border-rose-200 rounded-xl text-rose-700 text-sm">
-              <AlertCircle size={14} className="text-rose-500" />
-              <span className="font-medium">{alertes.filter(a => !a.lue).length} alerte{alertes.filter(a => !a.lue).length > 1 ? 's' : ''}</span>
-            </div>
-          )}
-          <button
-            onClick={() => notifyAjout('success', 'Export', 'Export des données effectué')}
-            className="flex items-center gap-1.5 px-3.5 py-2 text-sm font-medium text-gray-700 border border-gray-200 bg-white rounded-xl hover:bg-gray-50 hover:scale-105 active:scale-95 transition-all duration-200"
-          >
-            <Download size={15} className="text-gray-500" /> Exporter
-          </button>
           <button
             onClick={loadData}
             className="p-2 border border-gray-200 bg-white rounded-xl hover:bg-gray-50 text-gray-500 hover:text-gray-700 hover:scale-110 active:scale-95 transition-all duration-200"
@@ -2077,7 +2183,13 @@ export default function PaiementsPage() {
       </div>
 
       {/* Alertes */}
-      <AlerteBanner alertes={alertes} />
+      <AlerteBanner
+        alertes={alertes}
+        setAlertes={setAlertes}
+        expanded={alertsExpanded}
+        setExpanded={setAlertsExpanded}
+        containerRef={alertsRef}
+      />
 
       {/* Statistiques */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
@@ -2219,16 +2331,28 @@ export default function PaiementsPage() {
             description={search || statutFilter ? 'Ajustez vos filtres pour voir plus de résultats.' : 'Les paiements apparaîtront ici lorsque des réservations seront créées.'}
           />
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
+          <div>
+            <table className="w-full text-sm table-fixed">
+              <colgroup>
+                <col style={{ width: '4px' }} />
+                <col style={{ width: '7%' }} />
+                <col style={{ width: '19%' }} />
+                <col style={{ width: '11%' }} />
+                <col style={{ width: '13%' }} />
+                <col style={{ width: '8%' }} />
+                <col style={{ width: '8%' }} />
+                <col style={{ width: '8%' }} />
+                <col style={{ width: '9%' }} />
+                <col style={{ width: '17%' }} />
+              </colgroup>
               <thead>
                 <tr className="border-b border-gray-100 bg-gray-50/80">
                   <th className="w-0 p-0" />
                   {['N°', 'Client', 'Chambre', 'Séjour', 'Total', 'Encaissé', 'Solde', 'Statut', 'Actions'].map(h => (
                     <th
                       key={h}
-                      className={`px-5 py-3.5 text-xs font-semibold text-gray-500 uppercase tracking-widest ${
-                        ['Total', 'Encaissé', 'Solde'].includes(h) ? 'text-right' : h === 'Actions' ? 'text-center' : 'text-left'
+                      className={`py-3.5 text-xs font-semibold text-gray-500 uppercase tracking-widest ${
+                        ['Total', 'Encaissé', 'Solde'].includes(h) ? 'px-3 text-right' : h === 'Actions' ? 'px-3 text-center' : 'px-4 text-left'
                       }`}
                     >
                       {h}
@@ -2281,15 +2405,6 @@ export default function PaiementsPage() {
                 Taux de recouvrement <span className="font-semibold text-emerald-600">{stats.tauxRecouvrement}%</span>
               </span>
             </div>
-            {(stats.enAttente > 0 || stats.partiel > 0) && (
-              <button
-                onClick={envoyerRelancesGroupes}
-                className="flex items-center gap-1.5 text-xs font-medium text-amber-600 bg-amber-50 border border-amber-200 px-3.5 py-1.5 rounded-lg hover:bg-amber-100 hover:scale-105 active:scale-95 transition-all duration-200"
-              >
-                <Send size={13} />
-                Envoyer les relances ({stats.enAttente + stats.partiel})
-              </button>
-            )}
           </div>
         )}
       </div>
