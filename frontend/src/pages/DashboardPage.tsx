@@ -1,6 +1,6 @@
 // frontend/src/pages/DashboardPage.tsx
 // Tableau de bord — Les Palmiers de l'Entre-Deux
-// Version refactorisée : API complète, animations, UI/UX moderne, texte adaptatif.
+// Version refactorisée : API complète, animations fluides, UI/UX moderne et pro.
 // Tous les styles nécessaires sont embarqués dans ce fichier (voir <DashboardStyles /> en bas).
 
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
@@ -11,9 +11,9 @@ import {
   BedDouble, CalendarCheck, TrendingUp, Users,
   Clock, Euro, Eye, Bike, Plane, MapPin, Building, Calendar,
   BarChart3, PieChart, Activity, Star, TrendingDown, Sparkles,
-  RefreshCw, AlertCircle, Mail, X, Loader2,
+  RefreshCw, AlertCircle, Mail, X, ArrowRight,
   CreditCard, Wallet, Receipt, DollarSign,
-  Wifi as WifiIcon, WifiOff, Bell, Send, MailCheck, MailWarning,
+  Bell, MailCheck, MailWarning,
   CheckCircle, Ban, Lock, Settings, ChevronRight
 } from 'lucide-react';
 import {
@@ -421,11 +421,11 @@ const StatCard: React.FC<{
   subtitle?: string; trend?: number; isNumeric?: boolean; suffix?: string;
 }> = ({ label, value, icon, color = 'emerald', subtitle, trend, isNumeric = false, suffix = '' }) => {
   const palette: Record<string, { bg: string; border: string; iconBg: string; iconText: string }> = {
-    emerald: { bg: 'bg-emerald-50/90', border: 'border-emerald-200/80', iconBg: 'bg-white/70 ring-1 ring-emerald-100', iconText: 'text-emerald-600' },
-    amber: { bg: 'bg-amber-50/90', border: 'border-amber-200/80', iconBg: 'bg-white/70 ring-1 ring-amber-100', iconText: 'text-amber-600' },
-    blue: { bg: 'bg-blue-50/90', border: 'border-blue-200/80', iconBg: 'bg-white/70 ring-1 ring-blue-100', iconText: 'text-blue-600' },
-    purple: { bg: 'bg-purple-50/90', border: 'border-purple-200/80', iconBg: 'bg-white/70 ring-1 ring-purple-100', iconText: 'text-purple-600' },
-    red: { bg: 'bg-red-50/90', border: 'border-red-200/80', iconBg: 'bg-white/70 ring-1 ring-red-100', iconText: 'text-red-600' }
+    emerald: { bg: 'bg-gradient-to-br from-emerald-50 via-emerald-50/60 to-white', border: 'border-emerald-200/80', iconBg: 'bg-white ring-1 ring-emerald-100 shadow-emerald-100', iconText: 'text-emerald-600' },
+    amber: { bg: 'bg-gradient-to-br from-amber-50 via-amber-50/60 to-white', border: 'border-amber-200/80', iconBg: 'bg-white ring-1 ring-amber-100 shadow-amber-100', iconText: 'text-amber-600' },
+    blue: { bg: 'bg-gradient-to-br from-blue-50 via-blue-50/60 to-white', border: 'border-blue-200/80', iconBg: 'bg-white ring-1 ring-blue-100 shadow-blue-100', iconText: 'text-blue-600' },
+    purple: { bg: 'bg-gradient-to-br from-purple-50 via-purple-50/60 to-white', border: 'border-purple-200/80', iconBg: 'bg-white ring-1 ring-purple-100 shadow-purple-100', iconText: 'text-purple-600' },
+    red: { bg: 'bg-gradient-to-br from-red-50 via-red-50/60 to-white', border: 'border-red-200/80', iconBg: 'bg-white ring-1 ring-red-100 shadow-red-100', iconText: 'text-red-600' }
   };
   const c = palette[color];
   const numericValue = typeof value === 'number' ? value : parseFloat(String(value).replace(/[^\d.-]/g, '')) || 0;
@@ -434,11 +434,12 @@ const StatCard: React.FC<{
   return (
     <motion.div
       variants={fadeInScale}
-      whileHover={{ y: -4, scale: 1.02, boxShadow: '0 12px 24px -8px rgba(0,0,0,0.1)' }}
+      whileHover={{ y: -5, scale: 1.02, boxShadow: '0 16px 32px -12px rgba(0,0,0,0.14)' }}
       transition={{ type: 'spring', stiffness: 400, damping: 25 }}
-      className={`p-4 sm:p-5 rounded-2xl border ${c.border} ${c.bg} shadow-sm hover:shadow-md transition-shadow duration-300 cursor-default min-w-0`}
+      className={`relative overflow-hidden p-4 sm:p-5 rounded-2xl border ${c.border} ${c.bg} shadow-sm hover:shadow-md transition-shadow duration-300 cursor-default min-w-0`}
     >
-      <div className="flex items-start justify-between gap-2">
+      <div className="absolute -right-6 -top-6 w-20 h-20 rounded-full bg-white/40 blur-2xl pointer-events-none" />
+      <div className="relative flex items-start justify-between gap-2">
         <div className="flex-1 min-w-0">
           <Truncate as="p" className="text-[11px] sm:text-xs font-semibold text-gray-500 uppercase tracking-wider">{label}</Truncate>
           <p className="stat-value font-bold mt-1 text-gray-900 leading-tight">
@@ -483,10 +484,15 @@ const ChambreStatusBadge: React.FC<{ statut: StatutAffichage; animated?: boolean
 };
 
 const SectionCard: React.FC<{ title: string; icon: React.ReactNode; right?: React.ReactNode; children: React.ReactNode; className?: string }> = ({ title, icon, right, children, className = '' }) => (
-  <motion.div variants={fadeInUp} className={`bg-white rounded-2xl shadow-sm border border-gray-100 p-4 min-w-0 ${className}`}>
+  <motion.div
+    variants={fadeInUp}
+    whileHover={{ y: -2 }}
+    transition={{ type: 'spring', stiffness: 300, damping: 28 }}
+    className={`bg-white rounded-2xl shadow-sm hover:shadow-md border border-gray-100 p-4 min-w-0 transition-shadow duration-300 ${className}`}
+  >
     <div className="flex items-center gap-2 mb-3 min-w-0">
       <h3 className="font-semibold text-gray-900 flex items-center gap-2 min-w-0">
-        <span className="text-emerald-600 shrink-0">{icon}</span>
+        <span className="p-1.5 rounded-lg bg-emerald-50 text-emerald-600 shrink-0">{icon}</span>
         <Truncate>{title}</Truncate>
       </h3>
       {right && <div className="ml-auto shrink-0">{right}</div>}
@@ -516,7 +522,12 @@ const ArrivalsDeparturesSection: React.FC<{ reservations: Reservation[]; loading
         <span className="ml-auto text-xs font-semibold text-gray-400">{items.length}</span>
       </div>
       {items.length === 0 ? (
-        <p className="text-sm text-gray-400 italic text-center py-6">Aucun{title === 'Arrivées' ? 'e arrivée' : ' départ'} prévu{title === 'Arrivées' ? 'e' : ''}</p>
+        <div className="flex flex-col items-center justify-center py-8 text-center">
+          <div className="w-10 h-10 rounded-full bg-gray-50 flex items-center justify-center mb-2">
+            <CalendarCheck size={18} className="text-gray-300" />
+          </div>
+          <p className="text-sm text-gray-400 italic">Aucun{title === 'Arrivées' ? 'e arrivée' : ' départ'} prévu{title === 'Arrivées' ? 'e' : ''}</p>
+        </div>
       ) : (
         <div className="space-y-2">
           {items.map((r, i) => (
@@ -527,12 +538,18 @@ const ArrivalsDeparturesSection: React.FC<{ reservations: Reservation[]; loading
               initial={{ opacity: 0, x: title === 'Arrivées' ? -15 : 15 }}
               animate={{ opacity: 1, x: 0 }}
               transition={{ delay: i * 0.08 }}
-              whileHover={{ scale: 1.01 }}
+              whileHover={{ scale: 1.015, x: title === 'Arrivées' ? 2 : -2 }}
+              whileTap={{ scale: 0.99 }}
               className={`w-full flex items-center justify-between gap-2 p-3 bg-gradient-to-r ${tint} to-white rounded-xl border border-gray-100/70 text-left min-w-0`}
             >
-              <div className="min-w-0">
-                <Truncate as="p" className="text-sm font-medium text-gray-900">{r.client.prenom} {r.client.nom}</Truncate>
-                <Truncate as="p" className="text-xs text-gray-500">{r.chambre.nom} · {r.nbNuits} nuit{r.nbNuits > 1 ? 's' : ''}</Truncate>
+              <div className="min-w-0 flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-full bg-white ring-1 ring-gray-100 flex items-center justify-center text-[11px] font-bold text-gray-600 shrink-0">
+                  {initiales(r.client.prenom, r.client.nom)}
+                </div>
+                <div className="min-w-0">
+                  <Truncate as="p" className="text-sm font-medium text-gray-900">{r.client.prenom} {r.client.nom}</Truncate>
+                  <Truncate as="p" className="text-xs text-gray-500">{r.chambre.nom} · {r.nbNuits} nuit{r.nbNuits > 1 ? 's' : ''}</Truncate>
+                </div>
               </div>
               <div className="shrink-0"><StatusBadge statut={r.statut} /></div>
             </motion.button>
@@ -543,16 +560,16 @@ const ArrivalsDeparturesSection: React.FC<{ reservations: Reservation[]; loading
   );
 
   return (
-    <motion.div variants={fadeInUp} className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-      <div className="border-b border-gray-100 px-5 py-4 flex flex-wrap justify-between items-center gap-2 bg-gradient-to-r from-gray-50 to-white">
+    <motion.div variants={fadeInUp} className="bg-white rounded-2xl shadow-sm hover:shadow-md transition-shadow duration-300 border border-gray-100 overflow-hidden">
+      <div className="border-b border-gray-100 px-5 py-4 flex flex-wrap justify-between items-center gap-2 bg-gradient-to-r from-emerald-50/60 via-gray-50 to-white">
         <h3 className="font-semibold text-gray-900 flex items-center gap-2 min-w-0">
-          <Clock size={18} className="text-emerald-600 shrink-0" />
+          <span className="p-1.5 rounded-lg bg-emerald-50 text-emerald-600 shrink-0"><Clock size={16} /></span>
           <Truncate>Arrivées &amp; départs du jour</Truncate>
           <span className="text-xs text-gray-400 font-normal whitespace-nowrap">
             {new Intl.DateTimeFormat('fr-FR', { weekday: 'long', day: '2-digit', month: '2-digit' }).format(today)}
           </span>
         </h3>
-        <span className="text-xs font-medium text-gray-500 whitespace-nowrap">
+        <span className="text-xs font-medium text-gray-500 whitespace-nowrap bg-white px-2.5 py-1 rounded-full border border-gray-100">
           {arrivals.length} arrivée{arrivals.length !== 1 ? 's' : ''} · {departures.length} départ{departures.length !== 1 ? 's' : ''}
         </span>
       </div>
@@ -950,6 +967,76 @@ const ActiveServicesSection: React.FC<{ reservations: Reservation[]; loading: bo
 };
 
 // ============================================================================
+// SECTION : Prochains jours (7 jours) — comble l'espace et enrichit la donnée
+// ============================================================================
+
+const UpcomingWeekSection: React.FC<{ reservations: Reservation[]; loading: boolean; onView: (id: number) => void }> = ({ reservations, loading, onView }) => {
+  if (loading) return <SectionSkeleton rows={3} label="Prochains jours" />;
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const in7 = new Date(today);
+  in7.setDate(in7.getDate() + 7);
+
+  const upcoming = useMemo(() => reservations
+    .filter(r => {
+      const arrivee = new Date(r.dateArrivee);
+      return arrivee >= today && arrivee <= in7 && r.statut !== 'ANNULEE' && r.statut !== 'NO_SHOW';
+    })
+    .sort((a, b) => new Date(a.dateArrivee).getTime() - new Date(b.dateArrivee).getTime())
+    .slice(0, 6),
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  [reservations]);
+
+  const totalNuitees = upcoming.reduce((sum, r) => sum + (r.nbNuits || 0), 0);
+
+  return (
+    <SectionCard
+      title="Prochains 7 jours"
+      icon={<Sparkles size={18} />}
+      right={upcoming.length > 0 ? <span className="px-2.5 py-0.5 bg-blue-100 text-blue-700 text-xs font-medium rounded-full">{upcoming.length} arrivée{upcoming.length !== 1 ? 's' : ''}</span> : undefined}
+    >
+      {upcoming.length === 0 ? (
+        <p className="text-sm text-gray-400 italic text-center py-6">Aucune arrivée prévue cette semaine</p>
+      ) : (
+        <>
+          <div className="space-y-2 mb-3">
+            {upcoming.map((r, i) => (
+              <motion.button
+                key={r.id}
+                type="button"
+                onClick={() => onView(r.id)}
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: i * 0.06 }}
+                whileHover={{ x: 2, backgroundColor: '#f9fafb' }}
+                className="w-full flex items-center justify-between gap-2 p-2.5 rounded-xl border border-gray-100/70 text-left min-w-0"
+              >
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <div className="w-9 h-9 rounded-lg bg-blue-50 text-blue-600 flex flex-col items-center justify-center shrink-0 leading-none">
+                    <span className="text-[13px] font-bold">{new Date(r.dateArrivee).getDate()}</span>
+                    <span className="text-[9px] uppercase">{new Intl.DateTimeFormat('fr-FR', { month: 'short' }).format(new Date(r.dateArrivee))}</span>
+                  </div>
+                  <div className="min-w-0">
+                    <Truncate as="p" className="text-sm font-medium text-gray-900">{r.client.prenom} {r.client.nom}</Truncate>
+                    <Truncate as="p" className="text-xs text-gray-500">{r.chambre.nom} · {r.nbNuits} nuit{r.nbNuits > 1 ? 's' : ''}</Truncate>
+                  </div>
+                </div>
+                <ArrowRight size={14} className="text-gray-300 shrink-0" />
+              </motion.button>
+            ))}
+          </div>
+          <div className="pt-3 border-t border-gray-100 flex justify-between text-sm">
+            <span className="text-gray-500">Nuitées prévues</span>
+            <span className="font-bold text-gray-900">{totalNuitees}</span>
+          </div>
+        </>
+      )}
+    </SectionCard>
+  );
+};
+
+// ============================================================================
 // SECTION : Notifications récentes (API /notifications)
 // ============================================================================
 
@@ -1073,20 +1160,23 @@ const RecentReservationsSection: React.FC<{ reservations: Reservation[]; loading
 
   if (sorted.length === 0) {
     return (
-      <motion.div variants={fadeInUp} className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 text-center">
+      <motion.div variants={fadeInUp} className="bg-white rounded-2xl shadow-sm border border-gray-100 p-10 text-center">
+        <div className="w-12 h-12 rounded-full bg-gray-50 flex items-center justify-center mx-auto mb-3">
+          <CalendarCheck size={22} className="text-gray-300" />
+        </div>
         <p className="text-gray-400">Aucune réservation récente</p>
       </motion.div>
     );
   }
 
   return (
-    <motion.div variants={fadeInUp} className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-      <div className="border-b border-gray-100 px-5 py-4 flex justify-between items-center gap-2 bg-gradient-to-r from-gray-50 to-white">
+    <motion.div variants={fadeInUp} className="bg-white rounded-2xl shadow-sm hover:shadow-md transition-shadow duration-300 border border-gray-100 overflow-hidden">
+      <div className="border-b border-gray-100 px-5 py-4 flex justify-between items-center gap-2 bg-gradient-to-r from-emerald-50/60 via-gray-50 to-white">
         <h3 className="font-semibold text-gray-900 flex items-center gap-2 min-w-0">
-          <CalendarCheck size={18} className="text-emerald-600 shrink-0" />
+          <span className="p-1.5 rounded-lg bg-emerald-50 text-emerald-600 shrink-0"><CalendarCheck size={16} /></span>
           <Truncate>Dernières réservations</Truncate>
         </h3>
-        <span className="text-xs text-gray-400 whitespace-nowrap">{sorted.length} récentes</span>
+        <span className="text-xs text-gray-400 whitespace-nowrap bg-white px-2.5 py-1 rounded-full border border-gray-100">{sorted.length} récentes</span>
       </div>
       <div className="overflow-x-auto dashboard-scrollbar">
         <table className="w-full text-sm min-w-[640px]">
@@ -1157,7 +1247,7 @@ const ClientDetailOverlay: React.FC<{ client: Client; onClose: () => void; onEdi
     initial={{ opacity: 0 }}
     animate={{ opacity: 1 }}
     exit={{ opacity: 0 }}
-    className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
+    className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4"
     onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
   >
     <motion.div
@@ -1267,6 +1357,21 @@ const DashboardStyles: React.FC = () => (
       word-break: break-word;
     }
 
+    .dashboard-hero {
+      background: radial-gradient(120% 140% at 0% 0%, #ecfdf5 0%, #ffffff 55%, #ffffff 100%);
+    }
+    .dashboard-hero::before {
+      content: '';
+      position: absolute;
+      top: -60px;
+      right: -60px;
+      width: 220px;
+      height: 220px;
+      background: radial-gradient(circle, rgba(16,185,129,0.14) 0%, rgba(16,185,129,0) 70%);
+      border-radius: 9999px;
+      pointer-events: none;
+    }
+
     .dashboard-force-black, .dashboard-force-black * { color-scheme: light; }
 
     @media (prefers-reduced-motion: reduce) {
@@ -1281,7 +1386,7 @@ const DashboardStyles: React.FC = () => (
 
 export default function DashboardPage() {
   const navigate = useNavigate();
-  const { isConnected, subscribe, refreshDashboard, connectionError } = useWebSocketContext();
+  const { isConnected, subscribe, refreshDashboard } = useWebSocketContext();
 
   const [clients, setClients] = useState<Client[]>([]);
   const [reservations, setReservations] = useState<Reservation[]>([]);
@@ -1295,7 +1400,6 @@ export default function DashboardPage() {
     clients: true, chambres: true, reservations: true, paiements: true, notifications: true, communication: true
   });
   const [isRefreshing, setIsRefreshing] = useState(false);
-  const [lastRefresh, setLastRefresh] = useState(new Date());
   const [selectedClient, setSelectedClient] = useState<Client | null>(null);
 
   const isFetching = useRef(false);
@@ -1389,10 +1493,10 @@ export default function DashboardPage() {
       setLoadingFlag('communication', false);
     }
 
-    // 6. Charger les réservations (dépend des clients et chambres)
+    // 6. Charger les réservations (dépend des clients et chambres, inclut TOUT le détail)
     setLoadingFlag('reservations', true);
     try {
-      const res = await reservationService.getAll({ limit: 100 } as any);
+      const res = await reservationService.getAll({ include: ['client', 'chambre', 'paiements', 'services'] } as any);
       const raw = (res as any)?.data ?? res ?? [];
       const list = Array.isArray(raw) ? raw : [];
 
@@ -1416,12 +1520,11 @@ export default function DashboardPage() {
       setLoadingFlag('reservations', false);
     }
 
-    setLastRefresh(new Date());
     setIsRefreshing(false);
     isFetching.current = false;
   }, [setLoadingFlag]);
 
-  // ── WebSocket ─────────────────────────────────────────────────────────────────
+  // ── WebSocket (rafraîchissement silencieux — sans affichage de statut) ───────
   useEffect(() => {
     if (isConnected && subscribe) {
       subscribe('dashboard');
@@ -1503,32 +1606,23 @@ export default function DashboardPage() {
           initial={{ opacity: 0, y: -20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.5 }}
-          className="flex flex-col lg:flex-row lg:items-center lg:justify-between mb-6 gap-4"
+          className="dashboard-hero relative overflow-hidden flex flex-col lg:flex-row lg:items-center lg:justify-between mb-6 gap-4 rounded-3xl border border-emerald-100/70 shadow-sm px-5 py-5 lg:px-7 lg:py-6"
         >
-          <div className="flex items-center gap-3 min-w-0">
+          <div className="relative flex items-center gap-3 min-w-0">
             <motion.span animate={{ rotate: [0, 10, -10, 0] }} transition={{ duration: 2, repeat: Infinity, repeatDelay: 3 }} className="text-3xl shrink-0">
               🌴
             </motion.span>
             <div className="min-w-0">
               <h1 className="text-xl sm:text-2xl font-bold text-gray-900">Tableau de bord</h1>
-              <div className="flex items-center gap-3 text-sm text-gray-500 mt-0.5 flex-wrap">
+              <div className="flex items-center gap-2 text-sm text-gray-500 mt-0.5 flex-wrap">
                 <span className="whitespace-nowrap">Les Palmiers de l'Entre-Deux</span>
-                <span className="w-1 h-1 rounded-full bg-gray-300 shrink-0" />
-                <span className="text-xs whitespace-nowrap">{lastRefresh.toLocaleTimeString('fr-FR')}</span>
-                {isConnected ? (
-                  <span className="flex items-center gap-1 text-emerald-500 text-xs whitespace-nowrap">
-                    <WifiIcon size={11} className="animate-pulse" /> Temps réel
-                  </span>
-                ) : (
-                  <span className="flex items-center gap-1 text-gray-400 text-xs whitespace-nowrap">
-                    <WifiOff size={11} /> Hors ligne
-                  </span>
-                )}
-                {connectionError && <Truncate className="text-red-500 text-xs max-w-[12rem]">⚠️ {connectionError}</Truncate>}
                 {unreadCount > 0 && (
-                  <span className="flex items-center gap-1 text-amber-600 text-xs whitespace-nowrap">
-                    <Bell size={11} /> {unreadCount} notification{unreadCount > 1 ? 's' : ''}
-                  </span>
+                  <>
+                    <span className="w-1 h-1 rounded-full bg-gray-300 shrink-0" />
+                    <span className="flex items-center gap-1 text-amber-600 text-xs whitespace-nowrap bg-amber-50 px-2 py-0.5 rounded-full border border-amber-100">
+                      <Bell size={11} /> {unreadCount} notification{unreadCount > 1 ? 's' : ''}
+                    </span>
+                  </>
                 )}
               </div>
             </div>
@@ -1537,7 +1631,7 @@ export default function DashboardPage() {
             whileHover={{ scale: 1.05 }}
             whileTap={{ scale: 0.95 }}
             onClick={handleRefresh}
-            className="flex items-center justify-center gap-2 px-4 py-2 bg-white border border-gray-200 rounded-xl text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors shrink-0"
+            className="relative flex items-center justify-center gap-2 px-4 py-2 bg-white border border-gray-200 rounded-xl text-sm font-medium text-gray-700 hover:bg-gray-50 hover:border-emerald-200 hover:text-emerald-700 transition-colors shrink-0 shadow-sm"
           >
             <RefreshCw size={16} className={isRefreshing ? 'animate-spin' : ''} />
             Rafraîchir
@@ -1579,10 +1673,11 @@ export default function DashboardPage() {
           <PaiementsSection paiements={paiements} reservations={reservations} loading={sectionLoading.paiements || sectionLoading.reservations} />
         </div>
 
-        {/* Répartition revenus / Services actifs */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+        {/* Répartition revenus / Services actifs / Prochains jours */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-6">
           <RevenueDistributionSection reservations={reservations} loading={sectionLoading.reservations} />
           <ActiveServicesSection reservations={reservations} loading={sectionLoading.reservations} />
+          <UpcomingWeekSection reservations={reservations} loading={sectionLoading.reservations} onView={handleViewReservation} />
         </div>
 
         {/* Notifications / Communication */}

@@ -4,12 +4,12 @@ import { useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import {
   Plus, Search, Filter, CalendarDays,
-  Eye, CheckCircle, XCircle, Activity,
-  User, BedDouble, Euro, Download, Mail, Phone, AlertCircle,
-  RefreshCw, Trash2, CreditCard, Clock, Users,
-  DollarSign, Gift, Shield, Zap, Sparkles, Palmtree,
-  FileText, Loader2, Building, MapPin, Star, Calendar as CalendarIcon,
-  Bike, Plane, Wifi, Coffee, Wind, Snowflake, Tv
+  Eye, CheckCircle, XCircle,
+  User, Euro, Mail, Phone, AlertCircle,
+  RefreshCw, Trash2, Clock, Users,
+  DollarSign, Building, MapPin, Star, Calendar as CalendarIcon,
+  Bike, Plane, Wifi, Coffee, Wind, Snowflake, Tv,
+  ChevronLeft, ChevronRight
 } from 'lucide-react';
 import { reservationService } from '../services/api';
 import { useWebSocketContext } from '../context/WebSocketContext';
@@ -269,6 +269,86 @@ const ConfirmDialog = ({
 };
 
 // ============================================
+// PAGINATION
+// ============================================
+
+const PAGE_SIZE = 10;
+
+const Pagination = ({
+  currentPage,
+  totalItems,
+  pageSize,
+  onPageChange,
+}: {
+  currentPage: number;
+  totalItems: number;
+  pageSize: number;
+  onPageChange: (page: number) => void;
+}) => {
+  const totalPages = Math.max(1, Math.ceil(totalItems / pageSize));
+  if (totalItems === 0) return null;
+
+  const start = (currentPage - 1) * pageSize + 1;
+  const end = Math.min(currentPage * pageSize, totalItems);
+
+  // Build a compact list of page numbers with ellipses
+  const pages: (number | 'ellipsis')[] = [];
+  for (let page = 1; page <= totalPages; page++) {
+    if (page === 1 || page === totalPages || Math.abs(page - currentPage) <= 1) {
+      pages.push(page);
+    } else if (pages[pages.length - 1] !== 'ellipsis') {
+      pages.push('ellipsis');
+    }
+  }
+
+  return (
+    <div className="flex flex-col sm:flex-row items-center justify-between gap-3 px-4 py-3 border-t border-gray-200 bg-gray-50/60">
+      <span className="text-xs text-gray-500">
+        Affichage <span className="font-medium text-gray-700">{start}</span>–<span className="font-medium text-gray-700">{end}</span> sur{' '}
+        <span className="font-medium text-gray-700">{totalItems}</span>
+      </span>
+      <div className="flex items-center gap-1">
+        <button
+          onClick={() => onPageChange(Math.max(1, currentPage - 1))}
+          disabled={currentPage === 1}
+          className="p-1.5 rounded-lg border border-gray-300 text-gray-600 disabled:opacity-40 disabled:cursor-not-allowed hover:bg-gray-100 transition-all duration-200"
+          aria-label="Page précédente"
+        >
+          <ChevronLeft size={16} />
+        </button>
+
+        {pages.map((page, idx) =>
+          page === 'ellipsis' ? (
+            <span key={`ellipsis-${idx}`} className="px-2 text-gray-400 text-xs select-none">…</span>
+          ) : (
+            <button
+              key={page}
+              onClick={() => onPageChange(page)}
+              className={`min-w-[32px] px-2 py-1.5 text-xs rounded-lg border transition-all duration-200 ${
+                page === currentPage
+                  ? 'bg-emerald-600 text-white border-emerald-600 shadow-md'
+                  : 'border-gray-300 hover:bg-gray-100 text-gray-700'
+              }`}
+            >
+              {page}
+            </button>
+          )
+        )}
+
+        <button
+          onClick={() => onPageChange(Math.min(totalPages, currentPage + 1))}
+          disabled={currentPage === totalPages}
+          className="p-1.5 rounded-lg border border-gray-300 text-gray-600 disabled:opacity-40 disabled:cursor-not-allowed hover:bg-gray-100 transition-all duration-200"
+          aria-label="Page suivante"
+        >
+          <ChevronRight size={16} />
+        </button>
+      </div>
+    </div>
+  );
+};
+
+// ============================================
 // PAGE PRINCIPALE
 // ============================================
 
@@ -278,6 +358,7 @@ export default function ReservationsPage() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [statut, setStatut] = useState<StatutReservation | ''>('');
+  const [currentPage, setCurrentPage] = useState(1);
   const [selectedReservation, setSelectedReservation] = useState<Reservation | null>(null);
   const [showDetails, setShowDetails] = useState(false);
   const [confirmAction, setConfirmAction] = useState<{ 
@@ -400,7 +481,7 @@ export default function ReservationsPage() {
       filters.include = ['client', 'chambre', 'paiements', 'services'];
 
       const response = await reservationService.getAll(filters);
-      
+
       if (response?.success && response.data) {
         const transformed = response.data.map(transformReservation);
         setReservations(transformed);
@@ -595,6 +676,24 @@ export default function ReservationsPage() {
     loadReservations();
   }, [loadReservations]);
 
+  // Revenir à la page 1 dès que la recherche ou le filtre changent
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [search, statut]);
+
+  // Éviter de rester bloqué sur une page vide (ex: après suppression)
+  useEffect(() => {
+    const totalPages = Math.max(1, Math.ceil(reservations.length / PAGE_SIZE));
+    if (currentPage > totalPages) {
+      setCurrentPage(totalPages);
+    }
+  }, [reservations.length, currentPage]);
+
+  const paginatedReservations = reservations.slice(
+    (currentPage - 1) * PAGE_SIZE,
+    currentPage * PAGE_SIZE
+  );
+
   const openDetails = (reservation: Reservation) => {
     setSelectedReservation(reservation);
     setShowDetails(true);
@@ -702,90 +801,99 @@ export default function ReservationsPage() {
         ) : reservations.length === 0 ? (
           <EmptyState icon={<CalendarDays size={48} className="text-gray-300" />} title="Aucune réservation trouvée" description={search || statut ? "Ajustez vos filtres pour voir plus de résultats" : "Créez votre première réservation"} />
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-gray-200 bg-gray-50/80 text-xs text-gray-500 font-semibold uppercase tracking-wider">
-                  <th className="px-4 py-3 text-left">N°</th>
-                  <th className="px-4 py-3 text-left">Client</th>
-                  <th className="px-4 py-3 text-left">Chambre</th>
-                  <th className="px-4 py-3 text-left">Arrivée</th>
-                  <th className="px-4 py-3 text-left">Départ</th>
-                  <th className="px-4 py-3 text-center">Pers.</th>
-                  <th className="px-4 py-3 text-left">Montant</th>
-                  <th className="px-4 py-3 text-left">Paiement</th>
-                  <th className="px-4 py-3 text-left">Statut</th>
-                  <th className="px-4 py-3 text-center">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100">
-                {reservations.map((r) => (
-                  <tr key={r.id} className="hover:bg-gray-50/60 transition-colors cursor-pointer group" onClick={() => openDetails(r)}>
-                    <td className="px-4 py-3"><span className="font-mono text-xs font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-lg">{r.numeroReservation}</span></td>
-                    <td className="px-4 py-3">
-                      <div className="font-medium text-gray-900 flex items-center gap-1.5">
-                        {r.client_prenom} {r.client_nom}
-                        {r.groupe && <Badge variant="purple" label="Groupe" icon={<Users size={10} />} />}
-                        {r.client?.vip && <Star size={12} className="text-yellow-500 fill-yellow-500" />}
-                      </div>
-                      <div className="text-xs text-gray-500 flex items-center gap-1"><Mail size={12} className="text-gray-400" /> {r.client_email}</div>
-                    </td>
-                    <td className="px-4 py-3">
-                      <div className="font-medium text-gray-900">{r.chambre_nom}</div>
-                      <div className="text-xs text-gray-500">N° {r.chambre_numero}</div>
-                    </td>
-                    <td className="px-4 py-3 text-gray-700">
-                      {new Date(r.dateArrivee).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short' })}
-                      <span className="block text-xs text-gray-400">{new Date(r.dateArrivee).toLocaleDateString('fr-FR', { weekday: 'short' })}</span>
-                      {r.arriveeTardive && <span className="inline-flex items-center gap-0.5 text-xs text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded-full mt-0.5"><Clock size={10} /> Tardive</span>}
-                    </td>
-                    <td className="px-4 py-3 text-gray-700">
-                      {new Date(r.dateDepart).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short' })}
-                      <span className="block text-xs text-gray-400">{r.nbNuits} nuit{r.nbNuits > 1 ? 's' : ''}</span>
-                    </td>
-                    <td className="px-4 py-3 text-center text-gray-700">
-                      <span className="font-medium">{r.nbAdultes + r.nbEnfants}</span>
-                      {r.nbEnfants > 0 && <span className="block text-xs text-gray-400">dont {r.nbEnfants} enf.</span>}
-                    </td>
-                    <td className="px-4 py-3">
-                      <div className="font-semibold text-gray-900">{safeFormat(r.montantTotal, 0)}€</div>
-                      {toNumber(r.montantRestantDu) > 0 ? <span className="text-xs font-medium text-rose-600 bg-rose-50 px-1.5 py-0.5 rounded-full">Restant: {safeFormat(r.montantRestantDu, 0)}€</span> : <span className="text-xs text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded-full">Payé</span>}
-                    </td>
-                    <td className="px-4 py-3">
-                      <Badge variant={statutPaiementColor[r.statut_paiement] || 'default'} label={statutPaiementLabel[r.statut_paiement] || r.statut_paiement} icon={statutPaiementIcon[r.statut_paiement]} />
-                      {r.services.length > 0 && <span className="block text-xs text-sky-600 mt-0.5">+ {r.services.length} service{r.services.length > 1 ? 's' : ''}</span>}
-                    </td>
-                    <td className="px-4 py-3">
-                      <Badge variant={statutReservationColor[r.statut] || 'default'} label={statutReservationLabel[r.statut] || r.statut} icon={statutReservationIcon[r.statut]} />
-                      {r.statut === 'ANNULEE' && r.motifAnnulation && <div className="text-xs text-gray-400 mt-0.5 truncate max-w-[100px]">{r.motifAnnulation}</div>}
-                    </td>
-                    <td className="px-4 py-3">
-                      <div className="flex flex-wrap items-center justify-center gap-1.5">
-                        {r.statut === 'EN_ATTENTE_ACOMPTE' && (
-                          <button onClick={(e) => { e.stopPropagation(); setConfirmAction({ id: r.id, action: 'CONFIRMEE', label: 'Confirmer cette réservation après réception de l\'acompte ?' }); }} className="p-1.5 bg-emerald-100 hover:bg-emerald-200 rounded-lg transition-all duration-200 hover:scale-110" title="Confirmer (RG3)">
-                            <CheckCircle size={16} className="text-emerald-700" />
-                          </button>
-                        )}
-                        {(r.statut === 'EN_ATTENTE_ACOMPTE' || r.statut === 'CONFIRMEE') && (
-                          <button onClick={(e) => { e.stopPropagation(); handleAnnulationClick(r); }} className="p-1.5 bg-rose-100 hover:bg-rose-200 rounded-lg transition-all duration-200 hover:scale-110" title="Annuler (RG5)">
-                            <XCircle size={16} className="text-rose-700" />
-                          </button>
-                        )}
-                        {(r.statut === 'ANNULEE' || r.statut === 'TERMINEE' || r.statut === 'NO_SHOW') && (
-                          <button onClick={(e) => { e.stopPropagation(); handleSupprimerClick(r); }} className="p-1.5 bg-rose-100 hover:bg-rose-200 rounded-lg transition-all duration-200 hover:scale-110" title="Supprimer définitivement">
-                            <Trash2 size={16} className="text-rose-700" />
-                          </button>
-                        )}
-                        <button onClick={(e) => { e.stopPropagation(); navigate(`/reservations/${r.id}`); }} className="p-1.5 bg-violet-100 hover:bg-violet-200 rounded-lg transition-all duration-200 hover:scale-110" title="Voir détails">
-                          <Eye size={16} className="text-violet-700" />
-                        </button>
-                      </div>
-                    </td>
+          <>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-gray-200 bg-gray-50/80 text-xs text-gray-500 font-semibold uppercase tracking-wider">
+                    <th className="px-4 py-3 text-left">N°</th>
+                    <th className="px-4 py-3 text-left">Client</th>
+                    <th className="px-4 py-3 text-left">Chambre</th>
+                    <th className="px-4 py-3 text-left">Arrivée</th>
+                    <th className="px-4 py-3 text-left">Départ</th>
+                    <th className="px-4 py-3 text-center">Pers.</th>
+                    <th className="px-4 py-3 text-left">Montant</th>
+                    <th className="px-4 py-3 text-left">Paiement</th>
+                    <th className="px-4 py-3 text-left">Statut</th>
+                    <th className="px-4 py-3 text-center">Actions</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {paginatedReservations.map((r) => (
+                    <tr key={r.id} className="hover:bg-gray-50/60 transition-colors cursor-pointer group" onClick={() => openDetails(r)}>
+                      <td className="px-4 py-3"><span className="font-mono text-xs font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-lg">{r.numeroReservation}</span></td>
+                      <td className="px-4 py-3">
+                        <div className="font-medium text-gray-900 flex items-center gap-1.5">
+                          {r.client_prenom} {r.client_nom}
+                          {r.groupe && <Badge variant="purple" label="Groupe" icon={<Users size={10} />} />}
+                          {r.client?.vip && <Star size={12} className="text-yellow-500 fill-yellow-500" />}
+                        </div>
+                        <div className="text-xs text-gray-500 flex items-center gap-1"><Mail size={12} className="text-gray-400" /> {r.client_email}</div>
+                      </td>
+                      <td className="px-4 py-3">
+                        <div className="font-medium text-gray-900">{r.chambre_nom}</div>
+                        <div className="text-xs text-gray-500">N° {r.chambre_numero}</div>
+                      </td>
+                      <td className="px-4 py-3 text-gray-700">
+                        {new Date(r.dateArrivee).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short' })}
+                        <span className="block text-xs text-gray-400">{new Date(r.dateArrivee).toLocaleDateString('fr-FR', { weekday: 'short' })}</span>
+                        {r.arriveeTardive && <span className="inline-flex items-center gap-0.5 text-xs text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded-full mt-0.5"><Clock size={10} /> Tardive</span>}
+                      </td>
+                      <td className="px-4 py-3 text-gray-700">
+                        {new Date(r.dateDepart).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short' })}
+                        <span className="block text-xs text-gray-400">{r.nbNuits} nuit{r.nbNuits > 1 ? 's' : ''}</span>
+                      </td>
+                      <td className="px-4 py-3 text-center text-gray-700">
+                        <span className="font-medium">{r.nbAdultes + r.nbEnfants}</span>
+                        {r.nbEnfants > 0 && <span className="block text-xs text-gray-400">dont {r.nbEnfants} enf.</span>}
+                      </td>
+                      <td className="px-4 py-3">
+                        <div className="font-semibold text-gray-900">{safeFormat(r.montantTotal, 0)}€</div>
+                        {toNumber(r.montantRestantDu) > 0 ? <span className="text-xs font-medium text-rose-600 bg-rose-50 px-1.5 py-0.5 rounded-full">Restant: {safeFormat(r.montantRestantDu, 0)}€</span> : <span className="text-xs text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded-full">Payé</span>}
+                      </td>
+                      <td className="px-4 py-3">
+                        <Badge variant={statutPaiementColor[r.statut_paiement] || 'default'} label={statutPaiementLabel[r.statut_paiement] || r.statut_paiement} icon={statutPaiementIcon[r.statut_paiement]} />
+                        {r.services.length > 0 && <span className="block text-xs text-sky-600 mt-0.5">+ {r.services.length} service{r.services.length > 1 ? 's' : ''}</span>}
+                      </td>
+                      <td className="px-4 py-3">
+                        <Badge variant={statutReservationColor[r.statut] || 'default'} label={statutReservationLabel[r.statut] || r.statut} icon={statutReservationIcon[r.statut]} />
+                        {r.statut === 'ANNULEE' && r.motifAnnulation && <div className="text-xs text-gray-400 mt-0.5 truncate max-w-[100px]">{r.motifAnnulation}</div>}
+                      </td>
+                      <td className="px-4 py-3">
+                        <div className="flex flex-wrap items-center justify-center gap-1.5">
+                          {r.statut === 'EN_ATTENTE_ACOMPTE' && (
+                            <button onClick={(e) => { e.stopPropagation(); setConfirmAction({ id: r.id, action: 'CONFIRMEE', label: 'Confirmer cette réservation après réception de l\'acompte ?' }); }} className="p-1.5 bg-emerald-100 hover:bg-emerald-200 rounded-lg transition-all duration-200 hover:scale-110" title="Confirmer (RG3)">
+                              <CheckCircle size={16} className="text-emerald-700" />
+                            </button>
+                          )}
+                          {(r.statut === 'EN_ATTENTE_ACOMPTE' || r.statut === 'CONFIRMEE') && (
+                            <button onClick={(e) => { e.stopPropagation(); handleAnnulationClick(r); }} className="p-1.5 bg-rose-100 hover:bg-rose-200 rounded-lg transition-all duration-200 hover:scale-110" title="Annuler (RG5)">
+                              <XCircle size={16} className="text-rose-700" />
+                            </button>
+                          )}
+                          {(r.statut === 'ANNULEE' || r.statut === 'TERMINEE' || r.statut === 'NO_SHOW') && (
+                            <button onClick={(e) => { e.stopPropagation(); handleSupprimerClick(r); }} className="p-1.5 bg-rose-100 hover:bg-rose-200 rounded-lg transition-all duration-200 hover:scale-110" title="Supprimer définitivement">
+                              <Trash2 size={16} className="text-rose-700" />
+                            </button>
+                          )}
+                          <button onClick={(e) => { e.stopPropagation(); navigate(`/reservations/${r.id}`); }} className="p-1.5 bg-violet-100 hover:bg-violet-200 rounded-lg transition-all duration-200 hover:scale-110" title="Voir détails">
+                            <Eye size={16} className="text-violet-700" />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            <Pagination
+              currentPage={currentPage}
+              totalItems={reservations.length}
+              pageSize={PAGE_SIZE}
+              onPageChange={setCurrentPage}
+            />
+          </>
         )}
       </div>
 
